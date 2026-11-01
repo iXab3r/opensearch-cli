@@ -61,3 +61,7 @@ All names, IDs, routing values and counts are invented; no captures or real endp
 [Get Settings](https://docs.opensearch.org/latest/api-reference/index-apis/get-settings/) shapes.
 Aliases-only inspection projects Get Index; it does not add another API operation. Arbitrary
 mapping/alias details use Core's structured human fallback; creation dates are ISO instants.
+`fields.test.ts` combines those mapping shapes with [field capabilities](https://docs.opensearch.org/latest/api-reference/search-apis/field-caps/)
+from 2.19/3.2: nested objects, multi-fields, an underscore-prefixed user field, reserved metadata
+and a cross-index type conflict. Capabilities' optional indices list is preserved when supplied;
+mapping membership fills the common-type case. Fixtures contain no real schema or field values.

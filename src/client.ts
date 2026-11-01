@@ -50,6 +50,12 @@ export interface IndexSettings { primaries: number | null; replicas: number | nu
 /** Complete mapping and alias definitions belong to OpenSearch, not a CLI-specific schema. */
 export interface IndexInspection { name: string; settings: IndexSettings; aliases: Record<string, unknown>; mappings: Record<string, unknown> }
 export type IndexSection = "settings" | "mappings" | "aliases";
+/** Field types and their concrete indices; a conflict retains every observed type. */
+export interface FieldSummary { name: string; types: string[]; conflict: boolean; indicesByType: Record<string, string[]> }
+interface MappingNode { type?: string; properties?: Record<string, MappingNode>; fields?: Record<string, MappingNode> }
+
+// Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
+const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone"]);
 
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
@@ -186,6 +192,38 @@ export class OpenSearchClient {
       createdAt: wire.creation_date === undefined ? null : new Date(Number(wire.creation_date)).toISOString(),
     };
     return section === "settings" ? settings : { name, settings, aliases: item.aliases ?? {}, mappings: item.mappings ?? {} };
+  }
+
+  async fields(pattern: string, options: { type?: string; filter?: string; includeMeta?: boolean }): Promise<FieldSummary[]> {
+    const path = encodeURIComponent(pattern);
+    const { value: mappings } = await this.get<Record<string, { mappings: MappingNode }>>(`${path}/_mapping?allow_no_indices=true`);
+    const { value: capabilities } = await this.get<{ indices: string[]; fields: Record<string, Record<string, { indices?: string[] }>> }>(`${path}/_field_caps?fields=*&allow_no_indices=true`);
+    const grouped = new Map<string, Map<string, Set<string>>>();
+    const walk = (properties: Record<string, MappingNode>, prefix: string, index: string): void => {
+      for (const [key, node] of Object.entries(properties)) {
+        const name = prefix + key;
+        const type = node.type ?? "object";
+        const types = grouped.get(name) ?? new Map<string, Set<string>>();
+        const indices = types.get(type) ?? new Set<string>();
+        indices.add(index); types.set(type, indices); grouped.set(name, types);
+        if (node.properties) walk(node.properties, name + ".", index);
+        if (node.fields) walk(node.fields, name + ".", index);
+      }
+    };
+    for (const [index, mapping] of Object.entries(mappings)) walk(mapping.mappings.properties ?? {}, "", index);
+    for (const [name, caps] of Object.entries(capabilities.fields)) {
+      const mapped = grouped.get(name);
+      const types = Object.keys(caps).filter(type => type !== "unmapped");
+      const allMapped = mapped ? [...new Set([...mapped.values()].flatMap(indices => [...indices]))] : capabilities.indices;
+      grouped.set(name, new Map(types.map(type => [type, new Set(caps[type]!.indices ?? (types.length === 1 ? allMapped : [...mapped?.get(type) ?? []]))])));
+    }
+    const filter = options.filter === undefined ? undefined : new RegExp("^" + options.filter.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+    return [...grouped].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .filter(([name, types]) => (options.includeMeta || !metadataFields.has(name)) && (!options.type || types.has(options.type)) && (!filter || filter.test(name)))
+      .map(([name, groups]) => {
+        const types = [...groups.keys()].sort();
+        return { name, types, conflict: types.length > 1, indicesByType: Object.fromEntries(types.map(type => [type, [...groups.get(type)!].sort()])) };
+      });
   }
 }
 

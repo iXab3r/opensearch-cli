@@ -1,6 +1,6 @@
 import { CliError, command, parseServerUrl, recordView, tableView, type CliDefinition } from "@eyeauras/cli-factory";
 import { openSearchAuth } from "./auth.js";
-import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type IndexSection, type IndexSummary } from "./client.js";
+import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type FieldSummary, type IndexSection, type IndexSummary } from "./client.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -100,6 +100,19 @@ export function createDefinition(): CliDefinition {
           { header: "Generation", value: row => row.generation }, { header: "Backing indices", value: row => row.backingIndexCount },
           { header: "Health", value: row => row.health },
         ], empty: "No data streams found." }),
+      }),
+    ]), command("fields", "Explore index fields", [
+      command("list <pattern>", "List field types and conflicts", async ({ args, options }, context) =>
+        (await clientFor(context)).fields(args.pattern, options), {
+        permission: "ReadOnly", options: [
+          { flags: "--type <type>", description: "Select fields containing this type" },
+          { flags: "--filter <glob>", description: "Match field paths with * and ?" },
+          { flags: "--include-meta", description: "Include reserved metadata fields" },
+        ], view: tableView<FieldSummary>({ columns: [
+          { header: "Field", value: row => row.name }, { header: "Types", value: row => row.types.join(", ") },
+          { header: "Conflict", value: row => row.conflict },
+          { header: "Indices by type", value: row => Object.entries(row.indicesByType).map(([type, indices]) => `${type}: ${indices.join(", ")}`).join("; ") },
+        ], empty: "No fields found." }),
       }),
     ])],
   };
