@@ -19,7 +19,7 @@ TypeScript emits LF; tracked package text uses LF through `.gitattributes`.
 | Project | `EyeAuras_OpenSearchCli` |
 | VCS root, main only | `EyeAuras_OpenSearchCli_Repo` |
 | Verify | `EyeAuras_OpenSearchCli_Verify` |
-| Main trigger | `TRIGGER_4` |
+| Main trigger | `TRIGGER_1` |
 | Manual npm staging | `EyeAuras_OpenSearchCli_NpmStage` |
 
 The Linux Verify job runs `bash build/teamcity.sh` in `node:24-bookworm`. The entry point clears npm
@@ -27,4 +27,4 @@ and GitHub publishing tokens before bootstrap, installs .NET 10 in temporary sto
 npm, then runs Cake Verify. No PowerShell or GitHub Actions is used.
 
 Staging and registry release modes remain issue #4; this driver cannot publish or stage a release.
-After infrastructure merges, run Verify on main, then enable `TRIGGER_4` only after a green build.
+After infrastructure merges, run Verify on main, then enable `TRIGGER_1` only after a green build.

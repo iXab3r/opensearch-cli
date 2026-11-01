@@ -1,8 +1,17 @@
 import { isIP } from "node:net";
+import { readdir, readFile } from "node:fs/promises";
 
 // Defense in depth for synthetic fixtures; human review remains mandatory.
 export function fixtureFindings(text) {
   const findings = new Set();
+  // Relative Markdown documentation links are paths, not network addresses.
+  text = text.replace(/\]\((?!https?:\/\/)[^)]*\)/gi, "]()");
+  for (const match of text.matchAll(/https?:\/\/[^\s"'<>\])]+/gi)) {
+    try {
+      const host = new URL(match[0]).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      if (host !== "localhost" && !isIP(host) && !/(^|\.)example\.(com|org)$/.test(host)) findings.add("non-example hostname");
+    } catch { findings.add("invalid URL"); }
+  }
   if (/\b(?:authorization|proxy-authorization|set-cookie)\s*["']?\s*:/i.test(text)) findings.add("credential header");
   if (/-----BEGIN [\w ]*PRIVATE KEY-----|\b(?:gh[pousr]_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/.test(text)) findings.add("token or private key");
   for (const match of text.matchAll(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g)) {
@@ -17,4 +26,14 @@ export function fixtureFindings(text) {
     if (isIP(address) === 6 && address !== "::1" && !/^2001:db8:/i.test(address)) findings.add("non-reserved IPv6");
   }
   return [...findings];
+}
+
+export async function scanFixtureTree(root) {
+  const findings = [];
+  for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const path = entry.parentPath + "/" + entry.name;
+    for (const reason of fixtureFindings(await readFile(path, "utf8"))) findings.push({ path, reason });
+  }
+  return findings;
 }
