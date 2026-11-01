@@ -52,3 +52,22 @@ test("M2 fields --include-meta includes capabilities for reserved metadata field
   const rows = await fixture.json(app, ["fields", "list", "sample-*", "--include-meta"]) as { name: string; indicesByType: Record<string, string[]> }[];
   assert.deepEqual(rows.find(row => row.name === "_id")!.indicesByType, { _id: ["sample-a", "sample-b"] });
 });
+
+test("M2 fields scopes generated join fields and makes reserved join metadata opt-in", async t => {
+  const { fixture, app, server } = await setupExplore(t);
+  server.use(http.get(origin + "/search/:pattern/_mapping", () => HttpResponse.json({
+    "sample-a": { mappings: { properties: { relation: { type: "join", relations: { product: "offer" } } } } },
+    "sample-b": { mappings: { properties: { title: { type: "text" } } } },
+  })), http.get(origin + "/search/:pattern/_field_caps", ({ request }) => {
+    // Server omits per-type indices with a single observed type unless unmapped types are included.
+    const includeUnmapped = new URL(request.url).searchParams.get("include_unmapped") === "true";
+    const caps = (type: string) => ({ [type]: { type, searchable: true, aggregatable: true, ...(includeUnmapped ? { indices: ["sample-a"] } : {}) },
+      ...(includeUnmapped ? { unmapped: { type: "unmapped", indices: ["sample-b"], searchable: false, aggregatable: false } } : {}) });
+    return HttpResponse.json({ indices: ["sample-a", "sample-b"], fields: { relation: caps("join"), "relation#product": caps("parent"), _parent_join: caps("_parent_join") } });
+  }));
+  const rows = await fixture.json(app, ["fields", "list", "sample-*"]) as { name: string; indicesByType: Record<string, string[]> }[];
+  assert.deepEqual(rows.find(row => row.name === "relation#product")!.indicesByType, { parent: ["sample-a"] });
+  assert.equal(rows.some(row => row.name === "_parent_join"), false);
+  const meta = await fixture.json(app, ["fields", "list", "sample-*", "--include-meta"]) as { name: string; indicesByType: Record<string, string[]> }[];
+  assert.deepEqual(meta.find(row => row.name === "_parent_join")!.indicesByType, { _parent_join: ["sample-a"] });
+});

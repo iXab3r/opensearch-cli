@@ -38,8 +38,13 @@ test("M2 indices show returns settings, aliases and complete mappings in JSON an
 for (const section of ["settings", "mappings", "aliases"]) test(`M2 indices show --section ${section} returns only that section`, async t => {
   const { fixture, server, app } = await setupExplore(t);
   const expected = section === "settings" ? expectedSettings : section === "mappings" ? mappings : aliases;
-  server.use(http.get(origin + "/search/sample-a" + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : ""), () =>
-    HttpResponse.json({ "sample-a": { [section]: section === "settings" ? settings : expected } })));
+  server.use(http.get(origin + "/search/sample-a" + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : ""), ({ request }) => {
+    // WHAT: confirmed mappings REST compatibility defect from review580; independently approved guard.
+    // HOW: mimic OpenSearch2.19/3.2 rejecting settings-only query parameters on GetMapping.
+    if (section === "mappings" && new URL(request.url).searchParams.has("flat_settings"))
+      return HttpResponse.json({ error: { type: "illegal_argument_exception", reason: "unrecognized flat_settings parameter" }, status: 400 }, { status: 400 });
+    return HttpResponse.json({ "sample-a": { [section]: section === "settings" ? settings : expected } });
+  }));
   assert.deepEqual(await fixture.json(app, ["indices", "show", "sample-a", "--section", section]), expected);
 });
 // The explicitly accepted Story6 missing-index workflow, not a hypothetical failure permutation.

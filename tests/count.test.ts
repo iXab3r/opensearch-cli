@@ -63,4 +63,9 @@ test("M2 count preserves shard failures, warns humans and can fail with its resu
   const strict = await fixture.run(app, ["count", "sample-a", "--fail-on-partial", "--json"]);
   assert.notEqual(strict.exitCode, 0); assert.deepEqual(JSON.parse(strict.stdout), value);
   assert.equal(JSON.parse(strict.stderr).error.code, "search.partial");
+  // WHAT: strict human count lost failed/total/reasons (confirmed review580 defect).
+  // HOW: use the supported strict invocation; negative regression explicitly approved by reviewer.
+  const strictHuman = await fixture.run(app, ["count", "sample-a", "--fail-on-partial"]);
+  assert.notEqual(strictHuman.exitCode, 0); assert.match(strictHuman.stdout, /Count:\s+12/);
+  assert.match(strictHuman.stderr, /1\/2 shards failed/); assert.match(strictHuman.stderr, /synthetic shard unavailable/);
 });
