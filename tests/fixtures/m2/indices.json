@@ -1,0 +1,8 @@
+[
+  {"index":"sample-z","health":"yellow","status":"open","pri":"2","rep":"1","docs.count":"1200","store.size":"1572864"},
+  {"index":"sample-hidden","health":"green","status":"open","pri":"1","rep":"0","docs.count":"3","store.size":"512"},
+  {"index":"sample-system","health":"green","status":"open","pri":"1","rep":"0","docs.count":"4","store.size":"1024"},
+  {"index":".sample-public","health":"green","status":"open","pri":"1","rep":"0","docs.count":"0","store.size":"0"},
+  {"index":"sample-a","health":"green","status":"open","pri":"1","rep":"1","docs.count":"42","store.size":"2048"},
+  {"index":"sample-closed","health":"","status":"close","pri":null,"rep":null,"docs.count":null,"store.size":null}
+]
