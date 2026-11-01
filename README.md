@@ -3,7 +3,7 @@
 A general-purpose command-line client for [OpenSearch](https://opensearch.org/), built on
 [CliFactory](https://github.com/iXab3r/EyeAuras.CliFactory) (`@eyeauras/cli-factory`).
 
-> Profiles support Basic, bearer and open clusters; cluster info, health and index listing are available.
+> **M2 Explore data:** profiles, cluster info/health, indices, aliases, data streams, fields and count are available.
 > Further OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
 > The package has not been published.
 
@@ -52,6 +52,43 @@ No index documents, mappings or unrelated settings are returned.
 JSON and RPC return the same array of `{name, health, status, primaries, replicas, docsCount, storeBytes}`.
 Counts are numbers and sizes are numbers in bytes; unavailable statistics and health (for example on a closed
 index) are `null`. Human sizes use binary units. No matches return `[]` successfully.
+
+## Explore definitions and count documents
+
+```text
+opensearch-cli aliases list 'sample-*'
+opensearch-cli data-streams list 'sample-*'
+opensearch-cli indices show sample-a
+opensearch-cli indices show sample-a --section mappings --json
+opensearch-cli fields list 'sample-*' --filter 'user.*'
+opensearch-cli fields list 'sample-*' --type keyword --include-meta --json
+opensearch-cli count 'sample-*'
+opensearch-cli count sample-a --q 'status:500'
+opensearch-cli count sample-a --query-file query.json --fail-on-partial --json
+opensearch-cli count sample-a --query-file -
+```
+
+Alias rows show each target index, the nullable write-index flag and filter/routing presence.
+Data streams show their timestamp field, generation, backing-index count and health. Empty lists
+are successful. Index inspection returns `{name, settings, aliases, mappings}`; settings normalize
+shard counts and creation time, while mapping/alias definitions retain OpenSearch's structure.
+`--section settings|mappings|aliases` returns only that section. A missing index reports
+`index.notFound` and suggests `indices list`. Arbitrary definitions use Core's structured human view.
+
+Fields include object, nested and multi-field dotted paths. Each row retains `types`, `conflict`
+and `indicesByType`; `--type` selects matching fields without hiding their other conflicting types.
+`--filter` matches full paths with `*` and `?`. Reserved metadata fields require `--include-meta`;
+ordinary underscore-prefixed user fields stay visible.
+
+Query files contain the Query DSL **query object**, for example `{"term":{"status":500}}`, rather
+than a full search body. Relative paths resolve from the command's working directory. `-` reads
+fresh CLI stdin; JSON-RPC callers use a file because stdin carries the RPC protocol. Choose either
+`--q` or `--query-file`. Count returns numeric `count`, normalized `_shards` statistics, and
+`partial: {failedShards, totalShards, failures}`. Shard failures warn human callers on stderr;
+`--fail-on-partial` exits with `search.partial` and retains the result on stdout/RPC error result.
+All these commands are ReadOnly and use the selected profile's server permissions.
+Shard failure details retain index, shard, node and type/reason/cause chains. Diagnostic text
+uses Core's credential redaction before the domain result reaches any output or caller.
 
 ## Agreed direction
 

@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import test from "node:test";
+import { http, HttpResponse } from "msw";
+import { origin, setupExplore } from "./explore-fixture.js";
+
+// Synthetic Count2.19/3.2: no terminate_after is requested; failures remain observable.
+const complete = { count: 42, _shards: { total: 2, successful: 2, skipped: 0, failed: 0 } };
+const expected = { ...complete, partial: { failedShards: 0, totalShards: 2, failures: [] } };
+test("M2 count returns an exact count and shared JSON/RPC domain value", async t => {
+  const { fixture, server, app } = await setupExplore(t);
+  server.use(http.get(origin + "/search/:pattern/_count", ({ request, params }) => {
+    assert.equal(params.pattern, "sample-*"); assert.equal(new URL(request.url).search, "");
+    return HttpResponse.json(complete);
+  }));
+  assert.deepEqual(await fixture.json(app, ["count", "sample-*"]), expected);
+  const human = await fixture.run(app, ["count", "sample-*"]);
+  assert.equal(human.exitCode, 0, human.stderr); assert.match(human.stdout, /Count:\s+42/); assert.equal(human.stderr, "");
+  const [reply] = await fixture.rpc(app, [["count", "sample-*"]]) as { result: unknown }[];
+  assert.deepEqual(reply!.result, expected);
+});
+test("M2 count passes the query string without altering it", async t => {
+  const { fixture, server, app } = await setupExplore(t);
+  server.use(http.get(origin + "/search/sample-a/_count", ({ request }) => {
+    assert.equal(new URL(request.url).searchParams.get("q"), "status:500 AND user:sample");
+    return HttpResponse.json(complete);
+  }));
+  assert.deepEqual(await fixture.json(app, ["count", "sample-a", "--q", "status:500 AND user:sample"]), expected);
+});
+for (const source of ["file", "stdin"]) test(`M2 count reads a Query DSL query object from ${source}`, async t => {
+  const { fixture, server, app } = await setupExplore(t);
+  const query = { term: { status: 500 } };
+  const directory = await mkdtemp(join(tmpdir(), "opensearch-count-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "query.json"), JSON.stringify(query));
+  server.use(http.post(origin + "/search/sample-a/_count", async ({ request }) => {
+    assert.deepEqual(await request.json(), { query });
+    assert.match(request.headers.get("content-type")!, /application\/json/);
+    return HttpResponse.json(complete);
+  }));
+  const result = await fixture.run(app, ["count", "sample-a", "--query-file", source === "file" ? "query.json" : "-", "--json"], {
+    cwd: directory, ...(source === "stdin" ? { input: Readable.from([JSON.stringify(query)]) } : {}),
+  });
+  assert.equal(result.exitCode, 0, result.stderr); assert.deepEqual(JSON.parse(result.stdout), expected);
+  if (source === "file") {
+    const [reply] = await fixture.rpc(app, [["count", "sample-a", "--query-file", join(directory, "query.json")]]) as { result: unknown }[];
+    assert.deepEqual(reply!.result, expected);
+  }
+});
+test("M2 count preserves shard failures, warns humans and can fail with its result", async t => {
+  const { fixture, server, app } = await setupExplore(t);
+  // WHAT: review586 reproduced credentials disclosed through both failure copies and all result paths.
+  // HOW: use synthetic markers in supported reason/cause text; retain safe context and shard evidence.
+  const failures = [{ shard: 1, index: "sample-a", reason: { type: "query_shard_exception",
+    reason: "synthetic shard unavailable; Bearer [redacted]; password=[redacted]",
+    caused_by: { type: "illegal_argument_exception", reason: "synthetic cause; password=[redacted]" } } }];
+  const wireFailures = [{ ...failures[0], reason: { ...failures[0]!.reason,
+    reason: "synthetic shard unavailable; Bearer synthetic-review-token; password=synthetic-review-password",
+    caused_by: { type: "illegal_argument_exception", reason: "synthetic cause; password=synthetic-review-password" } } }];
+  const partial = { count: 12, _shards: { total: 2, successful: 1, skipped: 0, failed: 1, failures: wireFailures } };
+  const value = { ...partial, _shards: { ...partial._shards, failures }, partial: { failedShards: 1, totalShards: 2, failures } };
+  server.use(http.get(origin + "/search/sample-a/_count", () => HttpResponse.json(partial)));
+  assert.deepEqual(await fixture.json(app, ["count", "sample-a"]), value);
+  const human = await fixture.run(app, ["count", "sample-a"]);
+  assert.equal(human.exitCode, 0, human.stderr); assert.match(human.stdout, /Count:\s+12/);
+  assert.match(human.stderr, /1\/2 shards failed/); assert.match(human.stderr, /synthetic shard unavailable/);
+  const strict = await fixture.run(app, ["count", "sample-a", "--fail-on-partial", "--json"]);
+  assert.notEqual(strict.exitCode, 0); assert.deepEqual(JSON.parse(strict.stdout), value);
+  assert.equal(JSON.parse(strict.stderr).error.code, "search.partial");
+  // WHAT: strict human count lost failed/total/reasons (confirmed review580 defect).
+  // HOW: use the supported strict invocation; negative regression explicitly approved by reviewer.
+  const strictHuman = await fixture.run(app, ["count", "sample-a", "--fail-on-partial"]);
+  assert.notEqual(strictHuman.exitCode, 0); assert.match(strictHuman.stdout, /Count:\s+12/);
+  assert.match(strictHuman.stderr, /1\/2 shards failed/); assert.match(strictHuman.stderr, /synthetic shard unavailable/);
+  const replies = await fixture.rpc(app, [["count", "sample-a"], ["count", "sample-a", "--fail-on-partial"]]) as { result?: unknown; error?: { data: { result: unknown } } }[];
+  assert.deepEqual(replies[0]!.result, value); assert.deepEqual(replies[1]!.error!.data.result, value);
+  const executed = await app.execute(["count", "sample-a"]);
+  assert.deepEqual(executed, value);
+  await assert.rejects(app.execute(["count", "sample-a", "--fail-on-partial"]), (error: unknown) => {
+    assert.deepEqual((error as { result: unknown }).result, value); return true;
+  });
+  for (const output of [human.stdout + human.stderr, strictHuman.stdout + strictHuman.stderr, strict.stdout + strict.stderr, JSON.stringify(replies), JSON.stringify(executed)])
+    assert.doesNotMatch(output, /synthetic-review-(?:token|password)/);
+});
