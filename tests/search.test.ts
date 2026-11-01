@@ -106,3 +106,30 @@ for (const signal of ["timeout", "shards", "lower-bound"]) test(`M3 partial sear
   const [reply]=await fixture.rpc(app,[["search","sample-a","--fail-on-partial"]]) as {error:{code:string,data:{result:unknown}}}[];
   assert.deepEqual(reply!.error.data.result,value);
 });
+
+test("M3 early termination remains partial even when total-hit tracking is disabled",async t=>{
+  // WHAT: review596/bug597 reproduced terminated_early:true being reported as complete.
+  // HOW: Run the supported full-body command with no total, then ordinary/strict JSON and RPC.
+  // Independent reviewer explicitly approved this single regression's maintenance cost.
+  const {fixture,server,app}=await setupExplore(t);
+  const directory=await mkdtemp(join(tmpdir(),"opensearch-early-"));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  const path=join(directory,"request.json");
+  const body={query:{match_all:{}},terminate_after:1,track_total_hits:false};
+  await writeFile(path,JSON.stringify(body));
+  const wire={...response,terminated_early:true,hits:{max_score:response.hits.max_score,hits:response.hits.hits}};
+  server.use(http.post(origin+"/search/sample-a/_search",async({request})=>{assert.deepEqual(await request.json(),body);return HttpResponse.json(wire);}));
+  const argv=["search","sample-a","--body-file",path];
+  const value=await fixture.json(app,argv) as any;
+  assert.equal(value.partial.terminatedEarly,true);
+  assert.equal(value.terminated_early,true);
+  const human=await fixture.run(app,argv);
+  assert.equal(human.exitCode,0,human.stderr);
+  assert.match(human.stderr,/terminated early/i);
+  const strict=await fixture.run(app,[...argv,"--fail-on-partial","--json"]);
+  assert.equal(strict.exitCode,1);
+  assert.equal(JSON.parse(strict.stderr).error.code,"search.partial");
+  assert.deepEqual(JSON.parse(strict.stdout),value);
+  const [reply]=await fixture.rpc(app,[[...argv,"--fail-on-partial"]]) as {error:{data:{result:unknown}}}[];
+  assert.deepEqual(reply!.error.data.result,value);
+});
