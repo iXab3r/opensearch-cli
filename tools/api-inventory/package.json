@@ -1,0 +1,17 @@
+{
+  "name": "opensearch-cli-api-inventory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generates the OpenSearch API inventory and syncs it to GitHub issues. Not part of the published CLI.",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "generate": "node generate.mjs",
+    "sync": "node sync-issues.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}
