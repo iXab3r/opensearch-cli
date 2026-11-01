@@ -6,6 +6,7 @@ import {readQuery} from "./query.js";
 export function checkSearchCompleteness(value: SearchResult, context: CommandContext, strict: boolean): SearchResult {
   const warnings: string[] = [];
   if (value.partial.timedOut) warnings.push("Search timed out.");
+  if (value.partial.terminatedEarly) warnings.push("Search terminated early.");
   if (value.partial.failedShards) {
     const reasons = value.partial.failures.slice(0,3).map(failure=>failure.reason?.reason).filter(Boolean).join("; ").replace(/[\r\n\t]+/g," ");
     warnings.push(`${value.partial.failedShards}/${value.partial.totalShards} shards failed.${reasons ? " "+reasons : ""}`);

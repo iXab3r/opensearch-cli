@@ -110,7 +110,7 @@ unchanged; `-` reads fresh stdin. RPC callers use a file. Choose either `--q` or
 Explicit size/source/sort flags with a body are sent as search URL parameters.
 
 Human output shows hit metadata and source records. JSON and RPC retain search response fields,
-including highlights and arbitrary nested aggregations, plus `partial` signals for timeouts,
+including highlights and arbitrary nested aggregations, plus `partial` signals for timeouts, early termination,
 failed shards and lower-bound totals. Human output warns on stderr; `--fail-on-partial` fails with
 `search.partial` while retaining the result on stdout (RPC: error result). A `gte` total prints `≥`.
 Invalid server query syntax returns `query.invalid` with its diagnostic reason.

@@ -68,14 +68,14 @@ export interface ShardFailureReason { type?: string; reason?: string; caused_by?
 export interface SearchHit { _index: string; _id: string; _score?: number | null; _source?: unknown; sort?: unknown[]; [key: string]: unknown }
 /** Search responses retain wire data plus explicit completeness signals for callers. */
 interface SearchResponse {
-  took: number; timed_out: boolean; _shards: CountResult["_shards"];
+  took: number; timed_out: boolean; terminated_early?: boolean; _shards: CountResult["_shards"];
   hits: { total?: {value: number; relation: "eq" | "gte"}; max_score?: number | null; hits: SearchHit[] };
   aggregations?: Record<string, unknown>;
   [key: string]: unknown;
 }
 /** Completeness signals accompany the unchanged search response fields. */
 export interface SearchResult extends SearchResponse {
-  partial: { timedOut: boolean; failedShards: number; totalShards: number; failures: ShardFailure[]; totalLowerBound: boolean };
+  partial: { timedOut: boolean; terminatedEarly: boolean; failedShards: number; totalShards: number; failures: ShardFailure[]; totalLowerBound: boolean };
 }
 /** GET/multi-get preserve each document's source, versioning metadata and found status. */
 export interface DocumentResult {
@@ -308,7 +308,7 @@ export class OpenSearchClient {
       throw new CliError("OpenSearch returned incomplete search metadata.", {code:"opensearch.invalidResponse"});
     const failures = (value._shards.failures ?? []).map(failure => ({...failure, ...(failure.reason === undefined ? {} : {reason:safeShardReason(failure.reason)})}));
     return {...value, _shards:{...value._shards, ...(value._shards.failures === undefined ? {} : {failures})},
-      partial:{timedOut:value.timed_out, failedShards:value._shards.failed, totalShards:value._shards.total, failures, totalLowerBound:value.hits.total?.relation === "gte"}} as SearchResult;
+      partial:{timedOut:value.timed_out, terminatedEarly:value.terminated_early === true, failedShards:value._shards.failed, totalShards:value._shards.total, failures, totalLowerBound:value.hits.total?.relation === "gte"}} as SearchResult;
   }
 
   async count(index: string, options: { q?: string; query?: Record<string, unknown> }): Promise<CountResult> {

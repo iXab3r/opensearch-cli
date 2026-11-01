@@ -13,7 +13,7 @@ const response = {
   hits: { total: { value: 1, relation: "eq" }, max_score: 1.5,
     hits: [{ _index: "sample-a", _id: "doc-1", _score: 1.5, _source: { title: "Synthetic result", category: "example" }, sort: [7] }] },
 };
-const partial = { timedOut: false, failedShards: 0, totalShards: 2, failures: [], totalLowerBound: false };
+const partial = { timedOut: false, terminatedEarly: false, failedShards: 0, totalShards: 2, failures: [], totalLowerBound: false };
 
 test("M3 simple search projects fields, sort and size and preserves JSON/RPC data", async t => {
   const { fixture, server, app } = await setupExplore(t);
