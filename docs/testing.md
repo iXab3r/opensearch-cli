@@ -56,3 +56,8 @@ The inline synthetic fixtures in `aliases-streams.test.ts` model OpenSearch 2.19
 [CAT aliases](https://docs.opensearch.org/latest/api-reference/cat/cat-aliases/) and
 [GetDataStream serialization](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/action/admin/indices/datastream/GetDataStreamAction.java).
 All names, IDs, routing values and counts are invented; no captures or real endpoints are used.
+`index-show.test.ts` uses synthetic 2.19/3.2 [Get Index](https://docs.opensearch.org/latest/api-reference/index-apis/get-index/),
+[Get Mapping](https://docs.opensearch.org/latest/api-reference/index-apis/get-mapping/) and
+[Get Settings](https://docs.opensearch.org/latest/api-reference/index-apis/get-settings/) shapes.
+Aliases-only inspection projects Get Index; it does not add another API operation. Arbitrary
+mapping/alias details use Core's structured human fallback; creation dates are ISO instants.

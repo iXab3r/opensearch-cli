@@ -23,7 +23,7 @@ test("M2 indices show returns settings, aliases and complete mappings in JSON an
 for (const section of ["settings", "mappings", "aliases"]) test(`M2 indices show --section ${section} returns only that section`, async t => {
   const { fixture, server, app } = await setupExplore(t);
   const expected = section === "settings" ? expectedSettings : section === "mappings" ? mappings : aliases;
-  server.use(http.get(origin + "/search/sample-a/" + (section === "settings" ? "_settings" : section === "mappings" ? "_mapping" : "_alias"), () =>
+  server.use(http.get(origin + "/search/sample-a" + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : ""), () =>
     HttpResponse.json({ "sample-a": { [section]: section === "settings" ? settings : expected } })));
   assert.deepEqual(await fixture.json(app, ["indices", "show", "sample-a", "--section", section]), expected);
 });
@@ -35,7 +35,7 @@ test("M2 indices show identifies a missing index and suggests listing indices", 
   assert.notEqual(json.exitCode, 0);
   const error = JSON.parse(json.stderr).error;
   assert.equal(error.code, "index.notFound");
-  assert.deepEqual(error.next, [["indices", "list"]]);
+  assert.deepEqual(error.next, [["indices", "list", "--profile", "default"]]);
   const human = await fixture.run(app, ["indices", "show", "absent"]);
-  assert.match(human.stderr, /Next: opensearch-cli indices list/);
+  assert.match(human.stderr, /Next:\s+opensearch-cli indices list/);
 });

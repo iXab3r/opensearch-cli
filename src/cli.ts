@@ -1,6 +1,6 @@
 import { CliError, command, parseServerUrl, recordView, tableView, type CliDefinition } from "@eyeauras/cli-factory";
 import { openSearchAuth } from "./auth.js";
-import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type IndexSummary } from "./client.js";
+import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type IndexSection, type IndexSummary } from "./client.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -75,6 +75,13 @@ export function createDefinition(): CliDefinition {
           { header: "Docs", value: row => row.docsCount },
           { header: "Store", value: row => row.storeBytes, format: "bytes" },
         ], empty: "No indices found." }),
+      }),
+      command("show <index>", "Show index settings, mappings and aliases", async ({ args, options }, context) =>
+        (await clientFor(context)).index(args.index, options.section as IndexSection | undefined), {
+        permission: "ReadOnly", options: [{ flags: "--section <section>", description: "Select settings, mappings or aliases", parse: value => {
+          if (!["settings", "mappings", "aliases"].includes(value)) throw new CliError("Section must be settings, mappings or aliases.", { code: "usage" });
+          return value;
+        } }],
       }),
     ]), command("aliases", "Explore index aliases", [
       command("list [pattern]", "List alias targets and flags", async ({ args }, context) =>

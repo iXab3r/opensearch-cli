@@ -45,6 +45,11 @@ function catCount(value: unknown): number | null {
 export interface AliasSummary { alias: string; index: string; writeIndex: boolean | null; hasFilter: boolean; hasRouting: boolean }
 /** A data stream's observed metadata, without document contents. */
 export interface DataStreamSummary { name: string; timestampField: string; generation: number; backingIndexCount: number; health: string }
+/** Selected index configuration; unavailable server defaults remain null. */
+export interface IndexSettings { primaries: number | null; replicas: number | null; refreshInterval: string | null; createdAt: string | null; uuid: string | null }
+/** Complete mapping and alias definitions belong to OpenSearch, not a CLI-specific schema. */
+export interface IndexInspection { name: string; settings: IndexSettings; aliases: Record<string, unknown>; mappings: Record<string, unknown> }
+export type IndexSection = "settings" | "mappings" | "aliases";
 
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
@@ -157,6 +162,30 @@ export class OpenSearchClient {
     return value.data_streams.map(stream => ({ name: stream.name, timestampField: stream.timestamp_field.name,
       generation: stream.generation, backingIndexCount: stream.indices.length, health: stream.status.toLowerCase() }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async index(index: string, section?: IndexSection): Promise<IndexInspection | IndexSettings | Record<string, unknown>> {
+    const path = encodeURIComponent(index) + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : "");
+    let value: Record<string, { settings?: { index?: Record<string, string> }; mappings?: Record<string, unknown>; aliases?: Record<string, unknown> }>;
+    try { ({ value } = await this.get<typeof value>(path + "?flat_settings=false")); }
+    catch (cause) {
+      if (cause instanceof HttpError && cause.status === 404)
+        throw new CliError("The index was not found.", { code: "index.notFound", cause, next: [["indices", "list"]] });
+      throw cause;
+    }
+    const names = Object.keys(value);
+    if (names.length !== 1) throw new CliError("Select one concrete index.", { code: "usage", next: [["indices", "list"]] });
+    const name = names[0]!;
+    const item = value[name]!;
+    if (section === "mappings") return item.mappings ?? {};
+    if (section === "aliases") return item.aliases ?? {};
+    const wire = item.settings?.index ?? {};
+    const settings: IndexSettings = {
+      primaries: catCount(wire.number_of_shards ?? null), replicas: catCount(wire.number_of_replicas ?? null),
+      refreshInterval: wire.refresh_interval ?? null, uuid: wire.uuid ?? null,
+      createdAt: wire.creation_date === undefined ? null : new Date(Number(wire.creation_date)).toISOString(),
+    };
+    return section === "settings" ? settings : { name, settings, aliases: item.aliases ?? {}, mappings: item.mappings ?? {} };
   }
 }
 
