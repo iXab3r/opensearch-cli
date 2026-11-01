@@ -45,7 +45,8 @@ Rows are sorted by name and show health, open/close status, primary and replica 
 document count and total store size. Hidden and system indices are excluded by metadata classification,
 even when named explicitly; `--include-hidden` includes both kinds visible to your profile.
 The default read uses CAT statistics plus a narrow cluster-state metadata projection, compatible
-with OpenSearch 2.x and 3.x; it requires `indices:monitor/stats` and `cluster:monitor/state` access.
+with OpenSearch 2.x and 3.x. Server permissions must allow `indices:monitor/stats`,
+`indices:monitor/settings/get`, `cluster:monitor/state` and `cluster:monitor/health`.
 No index documents, mappings or unrelated settings are returned.
 
 JSON and RPC return the same array of `{name, health, status, primaries, replicas, docsCount, storeBytes}`.
