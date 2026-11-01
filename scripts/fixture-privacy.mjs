@@ -6,6 +6,8 @@ export function fixtureFindings(text) {
   const findings = new Set();
   // Relative Markdown documentation links are paths, not network addresses.
   text = text.replace(/\]\((?!https?:\/\/)[^)]*\)/gi, "]()");
+  // CAT column names in JSON object keys are protocol fields, not hostnames.
+  text = text.replace(/"(?:docs\.count|store\.size)"\s*:/g, '"":');
   for (const match of text.matchAll(/https?:\/\/[^\s"'<>\])]+/gi)) {
     try {
       const host = new URL(match[0]).hostname.toLowerCase().replace(/^\[|\]$/g, "");

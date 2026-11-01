@@ -1,6 +1,6 @@
-import { CliError, command, parseServerUrl, recordView, type CliDefinition } from "@eyeauras/cli-factory";
+import { CliError, command, parseServerUrl, recordView, tableView, type CliDefinition } from "@eyeauras/cli-factory";
 import { openSearchAuth } from "./auth.js";
-import { clientFor, type ClusterHealth, type ClusterInfo } from "./client.js";
+import { clientFor, type ClusterHealth, type ClusterInfo, type IndexSummary } from "./client.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -57,6 +57,24 @@ export function createDefinition(): CliDefinition {
           { label: "Unassigned", value: value => value.unassigned_shards },
           { label: "Active %", value: value => value.active_shards_percent_as_number },
         ], sections: [{ title: () => "Indices", lines: value => value.indices ? Object.entries(value.indices).map(([name, index]) => `${name}: ${index.status}`) : undefined }] }),
+      }),
+    ]), command("indices", "Explore OpenSearch indices", [
+      command("list [pattern]", "List index health, counts and sizes", async ({ args, options }, context) =>
+        (await clientFor(context)).indices({ ...(args.pattern === undefined ? {} : { pattern: String(args.pattern) }), ...options }), {
+        permission: "ReadOnly",
+        options: [
+          { flags: "--health <status>", description: "Select green, yellow or red indices" },
+          { flags: "--include-hidden", description: "Include hidden and system indices" },
+        ],
+        view: tableView<IndexSummary>({ columns: [
+          { header: "Name", value: row => row.name },
+          { header: "Health", value: row => row.health },
+          { header: "Status", value: row => row.status },
+          { header: "Primaries", value: row => row.primaries },
+          { header: "Replicas", value: row => row.replicas },
+          { header: "Docs", value: row => row.docsCount },
+          { header: "Store", value: row => row.storeBytes, format: "bytes" },
+        ], empty: "No indices found." }),
       }),
     ])],
   };

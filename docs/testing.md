@@ -38,3 +38,14 @@ Documentation-derived fixtures use the [Cluster Information API](https://docs.op
 [Cluster Health API](https://docs.opensearch.org/latest/api-reference/cluster-api/cluster-health/) and
 [Security authinfo API](https://docs.opensearch.org/latest/security/api/authentication/auth-info/).
 Metadata fixtures target OpenSearch 2.19 and 3.2; the consumed fields are shared across those majors.
+
+## Index-list fixtures
+
+Story 4's fixtures model the consumed OpenSearch 2.19 and 3.2 CAT/metadata wire shapes.
+They are synthetic, documentation/source-derived examples, not real-service captures:
+[CAT indices](https://docs.opensearch.org/latest/api-reference/cat/cat-indices/),
+[2.19 CAT implementation](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/rest/action/cat/RestIndicesAction.java),
+and [2.0 index metadata serialization](https://github.com/opensearch-project/OpenSearch/blob/2.0/server/src/main/java/org/opensearch/cluster/metadata/IndexMetadata.java).
+The classifier uses metadata available before CAT's 3.9-only system filter. The fixture privacy
+scanner recognizes the exact JSON column keys `docs.count` and `store.size` as protocol names;
+it continues to scan their values and adjacent provenance for private hosts and credentials.

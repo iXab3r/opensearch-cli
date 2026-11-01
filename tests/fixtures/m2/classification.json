@@ -1,0 +1,10 @@
+{
+  "metadata":{"indices":{
+    "sample-z":{"system":false},
+    "sample-hidden":{"system":false,"settings":{"index":{"hidden":"true"}}},
+    "sample-system":{"system":true},
+    ".sample-public":{"system":false,"settings":{"index":{"hidden":"false"}}},
+    "sample-a":{"system":false},
+    "sample-closed":{"system":false}
+  }}
+}
