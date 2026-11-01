@@ -15,6 +15,8 @@ async function setup(t: test.TestContext) {
     assert.equal(new URL(request.url).searchParams.get("fields"), "*");
     return HttpResponse.json({ indices: ["sample-a", "sample-b"], fields: {
       _id: { _id: { type: "_id", searchable: true, aggregatable: false } },
+      _data_stream_timestamp: { _data_stream_timestamp: { type: "_data_stream_timestamp", searchable: false, aggregatable: false } },
+      _feature: { _feature: { type: "_feature", searchable: false, aggregatable: false } },
       price: { keyword: { type: "keyword", indices: ["sample-a"], searchable: true, aggregatable: true }, long: { type: "long", indices: ["sample-b"], searchable: true, aggregatable: true } },
       "user.name": { text: { type: "text", searchable: true, aggregatable: false } },
       "user.name.keyword": { keyword: { type: "keyword", searchable: true, aggregatable: true } },
@@ -51,6 +53,9 @@ test("M2 fields --include-meta includes capabilities for reserved metadata field
   const { fixture, app } = await setup(t);
   const rows = await fixture.json(app, ["fields", "list", "sample-*", "--include-meta"]) as { name: string; indicesByType: Record<string, string[]> }[];
   assert.deepEqual(rows.find(row => row.name === "_id")!.indicesByType, { _id: ["sample-a", "sample-b"] });
+  assert.ok(rows.some(row => row.name === "_data_stream_timestamp"));
+  assert.ok(rows.some(row => row.name === "_feature"));
+  assert.ok(rows.some(row => row.name === "_custom"));
 });
 
 test("M2 fields scopes generated join fields and makes reserved join metadata opt-in", async t => {

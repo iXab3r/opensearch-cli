@@ -52,9 +52,16 @@ for (const source of ["file", "stdin"]) test(`M2 count reads a Query DSL query o
 });
 test("M2 count preserves shard failures, warns humans and can fail with its result", async t => {
   const { fixture, server, app } = await setupExplore(t);
-  const failures = [{ shard: 1, index: "sample-a", reason: { type: "query_shard_exception", reason: "synthetic shard unavailable" } }];
-  const partial = { count: 12, _shards: { total: 2, successful: 1, skipped: 0, failed: 1, failures } };
-  const value = { ...partial, partial: { failedShards: 1, totalShards: 2, failures } };
+  // WHAT: review586 reproduced credentials disclosed through both failure copies and all result paths.
+  // HOW: use synthetic markers in supported reason/cause text; retain safe context and shard evidence.
+  const failures = [{ shard: 1, index: "sample-a", reason: { type: "query_shard_exception",
+    reason: "synthetic shard unavailable; Bearer [redacted]; password=[redacted]",
+    caused_by: { type: "illegal_argument_exception", reason: "synthetic cause; password=[redacted]" } } }];
+  const wireFailures = [{ ...failures[0], reason: { ...failures[0]!.reason,
+    reason: "synthetic shard unavailable; Bearer synthetic-review-token; password=synthetic-review-password",
+    caused_by: { type: "illegal_argument_exception", reason: "synthetic cause; password=synthetic-review-password" } } }];
+  const partial = { count: 12, _shards: { total: 2, successful: 1, skipped: 0, failed: 1, failures: wireFailures } };
+  const value = { ...partial, _shards: { ...partial._shards, failures }, partial: { failedShards: 1, totalShards: 2, failures } };
   server.use(http.get(origin + "/search/sample-a/_count", () => HttpResponse.json(partial)));
   assert.deepEqual(await fixture.json(app, ["count", "sample-a"]), value);
   const human = await fixture.run(app, ["count", "sample-a"]);
@@ -68,4 +75,13 @@ test("M2 count preserves shard failures, warns humans and can fail with its resu
   const strictHuman = await fixture.run(app, ["count", "sample-a", "--fail-on-partial"]);
   assert.notEqual(strictHuman.exitCode, 0); assert.match(strictHuman.stdout, /Count:\s+12/);
   assert.match(strictHuman.stderr, /1\/2 shards failed/); assert.match(strictHuman.stderr, /synthetic shard unavailable/);
+  const replies = await fixture.rpc(app, [["count", "sample-a"], ["count", "sample-a", "--fail-on-partial"]]) as { result?: unknown; error?: { data: { result: unknown } } }[];
+  assert.deepEqual(replies[0]!.result, value); assert.deepEqual(replies[1]!.error!.data.result, value);
+  const executed = await app.execute(["count", "sample-a"]);
+  assert.deepEqual(executed, value);
+  await assert.rejects(app.execute(["count", "sample-a", "--fail-on-partial"]), (error: unknown) => {
+    assert.deepEqual((error as { result: unknown }).result, value); return true;
+  });
+  for (const output of [human.stdout + human.stderr, strictHuman.stdout + strictHuman.stderr, strict.stdout + strict.stderr, JSON.stringify(replies), JSON.stringify(executed)])
+    assert.doesNotMatch(output, /synthetic-review-(?:token|password)/);
 });
