@@ -1,4 +1,4 @@
-import {CliError, command, formatHuman, integerParser, recordView, type CommandContext, type CommandDefinition} from "@eyeauras/cli-factory";
+import {CliError, command, formatHuman, integerParser, recordView, type CommandContext, type CommandDefinition, type HumanView} from "@eyeauras/cli-factory";
 import {clientFor, type SearchResult} from "./client.js";
 import {readQuery} from "./query.js";
 
@@ -16,6 +16,23 @@ export function checkSearchCompleteness(value: SearchResult, context: CommandCon
     context.progress("Warning: "+warnings.join(" "));
   }
   return value;
+}
+
+/** Core formats the records and bucket table; the product selects OpenSearch fields. */
+export function searchView(dateHistogram = false): HumanView {
+  return recordView<SearchResult>({fields:[
+    {label:"Total",value:value=>value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
+    {label:"Took (ms)",value:value=>value.took},
+  ],sections:[
+    {title:()=>"Hits",lines:value=>value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : value.aggregations ? undefined : ["No matches."]},
+    {title:()=>"Aggregations",lines:value=>value.aggregations ? Object.entries(value.aggregations).flatMap(([name,aggregation])=>{
+      if (!aggregation || typeof aggregation !== "object" || Array.isArray(aggregation)) return [name,formatHuman(aggregation)];
+      const {buckets,...metadata}=aggregation as Record<string,unknown>;
+      if (!Array.isArray(buckets)) return [name,formatHuman(aggregation)];
+      const rows=buckets.map((bucket:Record<string,unknown>)=>({Key:dateHistogram && typeof bucket.key === "number" ? new Date(bucket.key).toISOString() : bucket.key_as_string ?? bucket.key,Count:bucket.doc_count}));
+      return [name,...(Object.keys(metadata).length ? [formatHuman(metadata)] : []),rows.length ? formatHuman(rows) : "No buckets."];
+    }) : undefined},
+  ]});
 }
 
 /** One page uses the standard search API; Core renders every output format. */
@@ -46,8 +63,19 @@ export function searchCommand(): CommandDefinition {
     {flags:"--fields <fields>",description:"Select comma-separated source fields"},
     {flags:"--sort <fields>",description:"Sort by comma-separated field:asc or field:desc"},
     {flags:"--size <count>",description:"Limit hits in this page (default 10)",parse:integerParser({min:0,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Size must be a non-negative integer."})},
-  ],view:recordView<SearchResult>({fields:[
-    {label:"Total",value:value=>value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
-    {label:"Took (ms)",value:value=>value.took},
-  ],sections:[{title:()=>"Hits",lines:value=>value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : ["No matches."]}]})});
+  ],view:searchView()});
+}
+
+/** Convenience aggregations are ordinary size-zero searches under ReadOnly permission. */
+export function aggregateCommand(): CommandDefinition {
+  return command("aggregate","Summarize matching documents",["terms","histogram"].map(kind=>command(`${kind} <index>`,kind === "terms" ? "Group values into count buckets" : "Group dates into fixed-interval buckets",async({args,options},context)=>{
+    const aggregation=kind === "terms" ? {terms:{field:options.field,size:options.size ?? 10}} : {date_histogram:{field:options.field,fixed_interval:options.interval}};
+    const body={size:0,...(options.q === undefined ? {} : {query:{query_string:{query:options.q}}}),aggs:{result:aggregation}};
+    return checkSearchCompleteness(await (await clientFor(context)).search(String(args.index),body),context,options.failOnPartial === true);
+  },{permission:"ReadOnly",options:[
+    {flags:"--field <field>",description:"Select the field to aggregate",required:true},
+    ...(kind === "terms" ? [{flags:"--size <count>",description:"Limit buckets (default 10)",parse:integerParser({min:1,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Bucket size must be a positive integer."})}] : [{flags:"--interval <duration>",description:"Set a fixed date histogram interval",required:true}]),
+    {flags:"--q <query>",description:"Match a Lucene query string"},
+    {flags:"--fail-on-partial",description:"Fail on incomplete results or lower totals"},
+  ],view:searchView(kind === "histogram")})));
 }

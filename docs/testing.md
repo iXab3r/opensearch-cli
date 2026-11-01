@@ -81,3 +81,15 @@ based on the 2.19/3.2 mapper registrations, while preserving an ordinary `_custo
 Field discovery retains mapping-only object/nested types when capabilities omit childless objects;
 resolved alias/scalar capabilities remain authoritative. Explicit user properties, including modern
 keyword fields named `_all` or `_type`, remain visible under the default metadata filter.
+
+## Search and document wire sources
+
+`search.test.ts`, `documents.test.ts` and `aggregations.test.ts` use synthetic OpenSearch 2.19/3.2
+[Search API](https://docs.opensearch.org/latest/api-reference/search-apis/search/),
+[Get Document](https://docs.opensearch.org/latest/api-reference/document-apis/get-documents/),
+[Multi-get](https://docs.opensearch.org/latest/api-reference/document-apis/multi-get/) and
+[Document Exists](https://docs.opensearch.org/latest/api-reference/document-apis/document-exists/)
+wire shapes. Names, IDs, fields, documents and diagnostics are invented; no server captures are used.
+Scenarios drive the real command tree and native fetch boundary, with actual temporary body files
+and stdin. They retain selected source, metadata, highlights/aggregations and complete error causes,
+while checking shared human/JSON/RPC behavior and the explicit partial-result policy.
