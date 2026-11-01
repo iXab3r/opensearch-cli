@@ -4,6 +4,12 @@ import { clientFor, type SearchHit, type SearchResult } from "./client.js";
 /** The caller's finite result budget; observed hits include the one-hit overflow lookahead. */
 interface PagingCounts { retrievedCount: number; observedCount: number; maxResults: number }
 
+/** Local failure metadata, without the bodies of hits that were not yielded. */
+export interface PagingFailure extends PagingCounts {
+  partial?: SearchResult["partial"];
+  cleanupFailed?: boolean;
+}
+
 /** Owns one finite PIT traversal; Core owns consumption, output backpressure and cancellation. */
 export function searchAll(
   index: string, body: Record<string, unknown>, maxResults: number, tieBreaker: string | undefined,
@@ -25,7 +31,10 @@ export function searchAll(
     const automatic = major === 3 && minor! >= 3;
     if (!tieBreaker && !automatic)
       throw new CliError("Set --tie-breaker to a unique sortable doc-values field on OpenSearch before 3.3.", { code: "usage" });
-    const sort = body.sort === undefined ? [] : Array.isArray(body.sort) ? [...body.sort] : [body.sort];
+    const suppliedSort = body.sort === undefined ? [] : Array.isArray(body.sort) ? body.sort : [body.sort];
+    // OpenSearch expands a compound sort object's properties into separate cursor fields.
+    const sort = suppliedSort.flatMap(entry => entry && typeof entry === "object" && !Array.isArray(entry)
+      ? Object.entries(entry).map(([field, order]) => ({ [field]: order })) : [entry]);
     // OpenSearch3.3 encodes a shard-local document key: include the index for multi-index PITs.
     sort.push(...(tieBreaker ? [{ [tieBreaker]: { order: "asc" } }] : [{ _index: "asc" }, { _shard_doc: { order: "asc" } }]));
     const counts: PagingCounts = { retrievedCount: 0, observedCount: 0, maxResults };

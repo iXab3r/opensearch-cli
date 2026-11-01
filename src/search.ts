@@ -1,7 +1,7 @@
 import {CliError, command, formatHuman, integerParser, recordView, type CommandContext, type CommandDefinition, type HumanView} from "@eyeauras/cli-factory";
 import {clientFor, type SearchResult, type SearchHit} from "./client.js";
 import {readQuery} from "./query.js";
-import {searchAll} from "./search-all.js";
+import {searchAll, type PagingFailure} from "./search-all.js";
 
 /** Search and aggregation commands share the same completeness policy on every surface. */
 export function checkSearchCompleteness(value: SearchResult, context: CommandContext, strict: boolean): SearchResult {
@@ -22,12 +22,23 @@ export function checkSearchCompleteness(value: SearchResult, context: CommandCon
 
 /** Core formats the records and bucket table; the product selects OpenSearch fields. */
 export function searchView(dateHistogram = false): HumanView {
-  return recordView<SearchResult | SearchHit[]>({fields:[
-    {label:"Total",value:value=>!Array.isArray(value) && value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
-    {label:"Took (ms)",value:value=>Array.isArray(value) ? undefined : value.took},
+  type Presentation = SearchResult | SearchHit[] | PagingFailure;
+  const isPage = (value: Presentation): value is SearchResult => !Array.isArray(value) && "hits" in value;
+  const isFailure = (value: Presentation): value is PagingFailure => !Array.isArray(value) && !isPage(value) && "retrievedCount" in value;
+  return recordView<Presentation>({fields:[
+    {label:"Total",value:value=>isPage(value) && value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
+    {label:"Took (ms)",value:value=>isPage(value) ? value.took : undefined},
+    {label:"Retrieved",value:value=>isFailure(value) ? value.retrievedCount : undefined},
+    {label:"Observed",value:value=>isFailure(value) ? value.observedCount : undefined},
+    {label:"Budget",value:value=>isFailure(value) ? value.maxResults : undefined},
+    {label:"Timed out",value:value=>isFailure(value) ? value.partial?.timedOut : undefined},
+    {label:"Early termination",value:value=>isFailure(value) ? value.partial?.terminatedEarly : undefined},
+    {label:"Failed shards",value:value=>isFailure(value) ? value.partial?.failedShards : undefined},
+    {label:"Lower-bound total",value:value=>isFailure(value) ? value.partial?.totalLowerBound : undefined},
+    {label:"PIT cleanup failed",value:value=>isFailure(value) ? value.cleanupFailed : undefined},
   ],sections:[
-    {title:()=>"Hits",lines:value=>Array.isArray(value) ? (value.length ? value.map(hit=>formatHuman(hit)) : ["No matches."]) : value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : value.aggregations ? undefined : ["No matches."]},
-    {title:()=>"Aggregations",lines:value=>!Array.isArray(value) && value.aggregations ? Object.entries(value.aggregations).flatMap(([name,aggregation])=>{
+    {title:()=>"Hits",lines:value=>Array.isArray(value) ? (value.length ? value.map(hit=>formatHuman(hit)) : ["No matches."]) : isPage(value) ? (value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : value.aggregations ? undefined : ["No matches."]) : undefined},
+    {title:()=>"Aggregations",lines:value=>isPage(value) && value.aggregations ? Object.entries(value.aggregations).flatMap(([name,aggregation])=>{
       if (!aggregation || typeof aggregation !== "object" || Array.isArray(aggregation)) return [name,formatHuman(aggregation)];
       const {buckets,...metadata}=aggregation as Record<string,unknown>;
       if (!Array.isArray(buckets)) return [name,formatHuman(aggregation)];
