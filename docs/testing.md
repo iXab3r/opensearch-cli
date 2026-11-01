@@ -32,6 +32,18 @@ through its normal current-user profile and secret store. It refuses CI, accepts
 or arbitrary argv, runs only auth status, cluster info and cluster-level health, prints pass summaries and
 never saves fixtures automatically. It is separate from `npm test`; running it needs owner permission.
 
+## PIT paging wire sources
+
+Inline synthetic fixtures in `tests/search-all.test.ts` model the [PIT API2.19](https://docs.opensearch.org/2.19/search-plugins/searching-data/point-in-time-api/)
+and [PIT/search_after](https://docs.opensearch.org/2.19/search-plugins/searching-data/point-in-time/)
+wire contracts for OpenSearch2.19/3.2/3.3. They are documentation/source-derived, not captures.
+The modern multi-index sort includes `_index`, because the [3.3 shard-document comparator](https://github.com/opensearch-project/OpenSearch/blob/3.3/server/src/main/java/org/opensearch/search/sort/ShardDocFieldComparatorSource.java)
+encodes only the shard ID and document ID. [IndexFieldMapper](https://github.com/opensearch-project/OpenSearch/blob/3.3/server/src/main/java/org/opensearch/index/mapper/IndexFieldMapper.java)
+provides index-name fielddata. Older versions use the caller's globally unique doc-values field.
+Fixtures cover bounded page/lookahead requests, hit-only NDJSON, buffered human/execute/RPC,
+PIT cleanup with a fresh signal after cancellation/disconnect, partial results and retained cleanup
+diagnostics. No live cluster or index mutation is used.
+
 ## M1 wire sources
 
 Documentation-derived fixtures use the [Cluster Information API](https://docs.opensearch.org/latest/api-reference/cluster-api/info/),

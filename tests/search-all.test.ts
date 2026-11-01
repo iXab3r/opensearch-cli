@@ -8,6 +8,8 @@ import { origin, setupExplore } from "./explore-fixture.js";
 const shards = { total: 1, successful: 1, failed: 0 };
 const hits = (ids: number[]) => ids.map(id => ({ _index: "sample-a", _id: `doc-${id}`, _source: { title: `Synthetic ${id}` }, sort: ["sample-a", id] }));
 const page = (ids: number[]) => ({ took: 1, timed_out: false, _shards: shards, hits: { total: { value: 10000, relation: "gte" }, hits: hits(ids) } });
+// Service warnings may precede Core's final machine-error envelope on stderr.
+const failure = (stderr: string) => JSON.parse(stderr.trim().split("\n").at(-1)!).error;
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(r => { resolve = r; });
@@ -62,6 +64,7 @@ test("Story37 streams hits incrementally with PIT/search_after then closes the P
   } finally { release.resolve(); }
   const result = await running;
   assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal(result.stderr.match(/total is a lower bound/g)?.length, 1);
   assert.deepEqual(stdout.trim().split("\n").map(line => JSON.parse(line)), hits([1, 2, 3]));
   assert.deepEqual([state.opened, state.pages, state.closed], [1, 2, 1]);
   assert.equal(output.writableEnded, false);
@@ -80,7 +83,8 @@ test("Story37 exact budget checks one extra hit and reports only yielded documen
   const failed = await fixture.run(app, [...argv, "--json"]);
   assert.equal(failed.exitCode, 1);
   assert.deepEqual(failed.stdout.trim().split("\n").map(line => JSON.parse(line)), hits([1, 2]));
-  const error = JSON.parse(failed.stderr).error;
+  assert.match(failed.stderr, /total is a lower bound/);
+  const error = failure(failed.stderr);
   assert.equal(error.code, "search.budgetExceeded");
   assert.deepEqual(error.result, { retrievedCount: 2, observedCount: 3, maxResults: 2 });
   overflow = false;
@@ -97,7 +101,7 @@ test("Story37 caps a large requested page at remaining budget plus lookahead", a
   const failed = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "1", "--size", "1000", "--json"]);
   assert.equal(failed.exitCode, 1);
   assert.equal(failed.stdout, JSON.stringify(hits([1])[0]) + "\n");
-  assert.deepEqual(JSON.parse(failed.stderr).error.result, { retrievedCount: 1, observedCount: 2, maxResults: 1 });
+  assert.deepEqual(failure(failed.stderr).result, { retrievedCount: 1, observedCount: 2, maxResults: 1 });
 });
 
 for (const version of ["2.19.0", "3.2.0"]) test(`Story37 ${version} uses an explicit unique doc-values tie-breaker`, async t => {
@@ -204,7 +208,7 @@ test("Story37 cleanup failure retains the primary budget failure and cleanup dia
   );
   const result = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "1", "--json"]);
   assert.equal(result.exitCode, 1);
-  const error = JSON.parse(result.stderr).error;
+  const error = failure(result.stderr);
   assert.equal(error.code, "search.budgetExceeded");
   assert.equal(error.result.cleanupFailed, true);
   assert.match(JSON.stringify(error.cause), /cleanup/i);
@@ -221,4 +225,22 @@ test("Story37 multi-index PIT distinguishes identical shard-document keys", asyn
   }));
   assert.deepEqual(await app.execute(["search", "sample-*", "--all", "--max-results", "3", "--size", "1"]), documents);
   assert.equal(state.closed, 1);
+});
+
+test("Story37 failed output awaits PIT cleanup and preserves a cleanup error", async t => {
+  const { fixture, server, app } = await setup(t);
+  let cleaned = false;
+  server.use(
+    http.post(origin + "/search/_search", () => HttpResponse.json(page([1]))),
+    http.delete(origin + "/search/_search/point_in_time", () => {
+      cleaned = true;
+      return HttpResponse.json({ pits: [{ pit_id: "sample-pit", successful: false }] });
+    }),
+  );
+  const output = new Writable({ write(_chunk, _encoding, done) { done(new Error("Synthetic output failed.")); } });
+  const result = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "3", "--json"], { output });
+  assert.equal(result.exitCode, 1);
+  assert.equal(cleaned, true);
+  assert.match(result.stderr, /Synthetic output failed/);
+  assert.match(result.stderr, /cleanup/i);
 });
