@@ -3,9 +3,16 @@
 A general-purpose command-line client for [OpenSearch](https://opensearch.org/), built on
 [CliFactory](https://github.com/iXab3r/EyeAuras.CliFactory) (`@eyeauras/cli-factory`).
 
-> **Status: planning.** Nothing is implemented or published yet. Scope, commands and
-> authentication are being defined in [GitHub Issues](https://github.com/iXab3r/opensearch-cli/issues).
-> This README describes agreed direction only; anything not listed here is undecided.
+> **Status: infrastructure.** The executable supports framework help, version, profiles and JSON-RPC.
+> OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
+> The package has not been published.
+
+## Development
+
+Use Node 22 or 24 and the pinned npm version. Run `npm ci && npm test` for offline CLI tests,
+`npm run test:package` for an isolated installation check, or
+`dotnet run --project build -- --target Verify` for the complete CI check.
+See [testing](docs/testing.md) and [release preparation](docs/release.md).
 
 ## Agreed direction
 
