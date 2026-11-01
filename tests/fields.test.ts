@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { origin, setupExplore } from "./explore-fixture.js";
 
 // Synthetic mapping and field-capability shapes shared by OpenSearch2.19/3.2.
-const common = { _custom: { type: "keyword" }, user: { properties: { name: { type: "text", fields: { keyword: { type: "keyword" } } } } }, events: { type: "nested", properties: { code: { type: "integer" } } } };
+const common = { _all: { type: "keyword" }, _type: { type: "keyword" }, _custom: { type: "keyword" }, user: { properties: { name: { type: "text", fields: { keyword: { type: "keyword" } } } } }, events: { type: "nested", properties: { code: { type: "integer" } } } };
 async function setup(t: test.TestContext) {
   const state = await setupExplore(t);
   state.server.use(http.get(origin + "/search/:pattern/_mapping", ({ params }) => {
@@ -27,7 +27,7 @@ async function setup(t: test.TestContext) {
 test("M2 fields flattens objects, nested fields and multi-fields, preserving type conflicts", async t => {
   const { fixture, app } = await setup(t);
   const rows = await fixture.json(app, ["fields", "list", "sample-*"]) as { name: string; types: string[]; conflict: boolean; indicesByType: Record<string, string[]> }[];
-  assert.deepEqual(rows.map(row => row.name), ["_custom", "events", "events.code", "price", "user", "user.name", "user.name.keyword"]);
+  assert.deepEqual(rows.map(row => row.name), ["_all", "_custom", "_type", "events", "events.code", "price", "user", "user.name", "user.name.keyword"]);
   assert.deepEqual(rows.find(row => row.name === "price"), { name: "price", types: ["keyword", "long"], conflict: true, indicesByType: { keyword: ["sample-a"], long: ["sample-b"] } });
   assert.deepEqual(rows.find(row => row.name === "user.name")!.types, ["text"]);
   assert.deepEqual(rows.find(row => row.name === "events")!.types, ["nested"]);
@@ -40,7 +40,7 @@ test("M2 fields flattens objects, nested fields and multi-fields, preserving typ
 test("M2 fields --type keeps all conflict information for matching fields", async t => {
   const { fixture, app } = await setup(t);
   const rows = await fixture.json(app, ["fields", "list", "sample-*", "--type", "keyword"]) as { name: string; types: string[] }[];
-  assert.deepEqual(rows.map(row => row.name), ["_custom", "price", "user.name.keyword"]);
+  assert.deepEqual(rows.map(row => row.name), ["_all", "_custom", "_type", "price", "user.name.keyword"]);
   assert.deepEqual(rows.find(row => row.name === "price")!.types, ["keyword", "long"]);
 });
 test("M2 fields --filter matches dotted paths using star and question mark", async t => {
@@ -76,4 +76,20 @@ test("M2 fields scopes generated join fields and makes reserved join metadata op
   { indicesByType: { parent: ["sample-a"] }, includesReserved: false });
   const meta = await fixture.json(app, ["fields", "list", "sample-*", "--include-meta"]) as { name: string; indicesByType: Record<string, string[]> }[];
   assert.deepEqual(meta.find(row => row.name === "_parent_join")!.indicesByType, { _parent_join: ["sample-a"] });
+});
+
+test("M2 fields keeps childless object conflicts while resolving alias field types", async t => {
+  const { fixture, app, server } = await setupExplore(t);
+  server.use(http.get(origin + "/search/:pattern/_mapping", () => HttpResponse.json({
+    "sample-a": { mappings: { properties: { user: { type: "object", enabled: false }, status: { type: "keyword" }, label: { type: "alias", path: "status" } } } },
+    "sample-b": { mappings: { properties: { user: { type: "keyword" }, status: { type: "keyword" }, label: { type: "alias", path: "status" } } } },
+  })), http.get(origin + "/search/:pattern/_field_caps", () => HttpResponse.json({ indices: ["sample-a", "sample-b"], fields: {
+    user: { keyword: { type: "keyword", indices: ["sample-b"], searchable: true, aggregatable: true }, unmapped: { type: "unmapped", indices: ["sample-a"], searchable: false, aggregatable: false } },
+    label: { keyword: { type: "keyword", searchable: true, aggregatable: true } }, status: { keyword: { type: "keyword", searchable: true, aggregatable: true } },
+  } })));
+  const rows = await fixture.json(app, ["fields", "list", "sample-*"]) as { name: string; types: string[]; conflict: boolean; indicesByType: Record<string, string[]> }[];
+  assert.deepEqual(rows.find(row => row.name === "user"), { name: "user", types: ["keyword", "object"], conflict: true, indicesByType: { keyword: ["sample-b"], object: ["sample-a"] } });
+  assert.deepEqual(rows.find(row => row.name === "label")!.types, ["keyword"]);
+  const objects = await fixture.json(app, ["fields", "list", "sample-*", "--type", "object"]) as { name: string }[];
+  assert.deepEqual(objects.map(row => row.name), ["user"]);
 });
