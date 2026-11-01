@@ -1,0 +1,12 @@
+{
+  "name": "node-example",
+  "cluster_name": "cluster-example",
+  "cluster_uuid": "synthetic-cluster-id",
+  "version": {
+    "distribution": "opensearch",
+    "number": "2.19.0",
+    "build_hash": "synthetic-build-hash",
+    "build_date": "2025-06-18T12:34:56.000Z",
+    "lucene_version": "9.12.0"
+  }
+}

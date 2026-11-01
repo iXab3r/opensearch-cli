@@ -1,0 +1,13 @@
+{
+  "cluster_name": "cluster-example",
+  "status": "green",
+  "timed_out": false,
+  "number_of_nodes": 2,
+  "number_of_data_nodes": 2,
+  "active_primary_shards": 3,
+  "active_shards": 6,
+  "relocating_shards": 0,
+  "initializing_shards": 0,
+  "unassigned_shards": 0,
+  "active_shards_percent_as_number": 100
+}
