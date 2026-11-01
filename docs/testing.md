@@ -27,7 +27,14 @@ not prove sanitization: names, schemas and document contents still require human
 
 ## Local profile proof
 
-With the first service commands, `scripts/proof.mjs --profile <name>` will invoke an installed package
-through its normal current-user profile and secret store. It must refuse CI, accept no endpoint/token
-or arbitrary argv, run only a fixed bounded ReadOnly inventory, print pass/count/skip summaries and
-never save fixtures automatically. It is separate from `npm test`; running it needs owner permission.
+With the first service commands, `scripts/proof.mjs --profile <name>` invokes a temporary installed tarball
+through its normal current-user profile and secret store. It refuses CI, accepts no endpoint/token
+or arbitrary argv, runs only auth status, cluster info and cluster-level health, prints pass summaries and
+never saves fixtures automatically. It is separate from `npm test`; running it needs owner permission.
+
+## M1 wire sources
+
+Documentation-derived fixtures use the [Cluster Information API](https://docs.opensearch.org/latest/api-reference/cluster-api/info/),
+[Cluster Health API](https://docs.opensearch.org/latest/api-reference/cluster-api/cluster-health/) and
+[Security authinfo API](https://docs.opensearch.org/latest/security/api/authentication/auth-info/).
+Metadata fixtures target OpenSearch 2.19 and 3.2; the consumed fields are shared across those majors.

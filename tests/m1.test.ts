@@ -168,4 +168,3 @@ test("M1 reading a red cluster is a successful read", async t => {
   assert.equal(result.exitCode, 0, result.stderr);
   assert.match(result.stdout, /red/);
 });
-
