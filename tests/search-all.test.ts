@@ -6,19 +6,20 @@ import { origin, setupExplore } from "./explore-fixture.js";
 
 // Synthetic OpenSearch2.19/3.2/3.3 PIT/Search API shapes; documentation-derived, no captures.
 const shards = { total: 1, successful: 1, failed: 0 };
-const hits = (ids: number[]) => ids.map(id => ({ _index: "sample-a", _id: `doc-${id}`, _source: { title: `Synthetic ${id}` }, sort: [id] }));
+const hits = (ids: number[]) => ids.map(id => ({ _index: "sample-a", _id: `doc-${id}`, _source: { title: `Synthetic ${id}` }, sort: ["sample-a", id] }));
 const page = (ids: number[]) => ({ took: 1, timed_out: false, _shards: shards, hits: { total: { value: 10000, relation: "gte" }, hits: hits(ids) } });
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(r => { resolve = r; });
   return { promise, resolve };
 }
-async function setup(t: test.TestContext, version = "3.3.0") {
+async function setup(t: test.TestContext, version = "3.3.0", index = "sample-a") {
   const f = await setupExplore(t);
   const state = { opened: 0, closed: 0, pages: 0, order: [] as string[] };
   f.server.use(
     http.get(origin + "/search/", () => HttpResponse.json({ name: "sample-node", cluster_name: "sample", cluster_uuid: "sample-uuid", version: { distribution: "opensearch", number: version } })),
-    http.post(origin + "/search/sample-a/_search/point_in_time", ({ request }) => {
+    http.post(origin + "/search/:index/_search/point_in_time", ({ request, params }) => {
+      assert.equal(params.index, index);
       const query = new URL(request.url).searchParams;
       assert.equal(query.get("keep_alive"), "1m");
       assert.equal(query.get("allow_partial_pit_creation"), "false");
@@ -44,12 +45,12 @@ test("Story37 streams hits incrementally with PIT/search_after then closes the P
     const body = await request.json() as Record<string, unknown>;
     state.pages++;
     assert.deepEqual(body.pit, { id: "sample-pit", keep_alive: "1m" });
-    assert.deepEqual(body.sort, [{ _shard_doc: { order: "asc" } }]);
+    assert.deepEqual(body.sort, [{ _index: "asc" }, { _shard_doc: { order: "asc" } }]);
     if (state.pages === 1) {
       assert.equal(body.size, 2); assert.equal(body.search_after, undefined);
       return HttpResponse.json(page([1, 2]));
     }
-    assert.equal(body.size, 2); assert.deepEqual(body.search_after, [2]);
+    assert.equal(body.size, 2); assert.deepEqual(body.search_after, ["sample-a", 2]);
     secondPage.resolve(); await release.promise;
     return HttpResponse.json(page([3]));
   }));
@@ -70,9 +71,9 @@ test("Story37 exact budget checks one extra hit and reports only yielded documen
   const { fixture, server, app, state } = await setup(t);
   let overflow = true;
   server.use(http.post(origin + "/search/_search", async ({ request }) => {
-    const body = await request.json() as { size: number; search_after?: number[] };
+    const body = await request.json() as { size: number; search_after?: unknown[] };
     if (!body.search_after) { assert.equal(body.size, 2); return HttpResponse.json(page([1, 2])); }
-    assert.deepEqual(body.search_after, [2]); assert.equal(body.size, 1);
+    assert.deepEqual(body.search_after, ["sample-a", 2]); assert.equal(body.size, 1);
     return HttpResponse.json(page(overflow ? [3] : []));
   }));
   const argv = ["search", "sample-a", "--all", "--max-results", "2", "--size", "2"];
@@ -207,4 +208,17 @@ test("Story37 cleanup failure retains the primary budget failure and cleanup dia
   assert.equal(error.code, "search.budgetExceeded");
   assert.equal(error.result.cleanupFailed, true);
   assert.match(JSON.stringify(error.cause), /cleanup/i);
+});
+
+test("Story37 multi-index PIT distinguishes identical shard-document keys", async t => {
+  const { server, app, state } = await setup(t, "3.3.0", "sample-*");
+  const documents = ["sample-a", "sample-b"].map(index => ({ _index: index, _id: "doc-0", sort: [index, 0] }));
+  server.use(http.post(origin + "/search/_search", async ({ request }) => {
+    const body = await request.json() as { sort: unknown; search_after?: unknown[] };
+    assert.deepEqual(body.sort, [{ _index: "asc" }, { _shard_doc: { order: "asc" } }]);
+    const next = !body.search_after ? 0 : body.search_after[0] === "sample-a" ? 1 : 2;
+    return HttpResponse.json({ ...page([]), hits: { hits: documents.slice(next, next + 1) } });
+  }));
+  assert.deepEqual(await app.execute(["search", "sample-*", "--all", "--max-results", "3", "--size", "1"]), documents);
+  assert.equal(state.closed, 1);
 });
