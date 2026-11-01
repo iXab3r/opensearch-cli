@@ -23,6 +23,24 @@ export interface ClusterHealth {
   indices?: Record<string, { status: string }>;
 }
 
+/** Index statistics normalized from CAT cells; unavailable observations remain null. */
+export interface IndexSummary {
+  name: string;
+  health: string | null;
+  status: string;
+  primaries: number | null;
+  replicas: number | null;
+  docsCount: number | null;
+  /** Total primary and replica store size in bytes, never a human size string. */
+  storeBytes: number | null;
+}
+
+function catCount(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value === "string" && /^\d+$/.test(value) && Number.isSafeInteger(Number(value))) return Number(value);
+  throw new CliError("OpenSearch returned an invalid index count or size.", { code: "opensearch.invalidResponse" });
+}
+
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
   constructor(private readonly connection: { url: string; fetch: typeof fetch; signal: AbortSignal; authorization?: string }) {}
@@ -77,6 +95,42 @@ export class OpenSearchClient {
     if (value.timed_out) throw new CliError("OpenSearch timed out waiting for cluster health.", { code: "opensearch.healthTimeout", result: value });
     if (status === 408) throw new HttpError(status, "OpenSearch rejected the health request.");
     return value;
+  }
+
+  async indices(options: { pattern?: string; health?: string; includeHidden?: boolean }): Promise<IndexSummary[]> {
+    const pattern = encodeURIComponent(options.pattern ?? "*");
+    const query = new URLSearchParams({
+      format: "json", bytes: "b", h: "index,health,status,pri,rep,docs.count,store.size",
+      expand_wildcards: options.includeHidden ? "all" : "open,closed", allow_no_indices: "true",
+    });
+    if (options.health !== undefined) query.set("health", options.health);
+    const { value } = await this.get<Record<string, unknown>[]>(`_cat/indices/${pattern}?${query}`);
+    if (!Array.isArray(value)) throw new CliError("OpenSearch returned an invalid index list.", { code: "opensearch.invalidResponse" });
+    let rows = value.map(row => {
+      if (!row || typeof row.index !== "string" || typeof row.health !== "string" || typeof row.status !== "string")
+        throw new CliError("OpenSearch returned incomplete index metadata.", { code: "opensearch.invalidResponse" });
+      return {
+        name: row.index, health: row.health || null, status: row.status,
+        primaries: catCount(row.pri), replicas: catCount(row.rep), docsCount: catCount(row["docs.count"]), storeBytes: catCount(row["store.size"]),
+      };
+    });
+    if (!options.includeHidden && rows.length) {
+      // CAT has no system classification before 3.9. Metadata also handles explicit hidden names.
+      const classificationQuery = new URLSearchParams({
+        filter_path: "metadata.indices.*.system,metadata.indices.*.settings.index.hidden",
+        expand_wildcards: "all", allow_no_indices: "true",
+      });
+      const { value: classification } = await this.get<{
+        metadata?: { indices?: Record<string, { system: boolean; settings?: { index?: { hidden?: string } } }> };
+      }>(`_cluster/state/metadata/${pattern}?${classificationQuery}`);
+      rows = rows.filter(row => {
+        const metadata = classification?.metadata?.indices?.[row.name];
+        if (typeof metadata?.system !== "boolean")
+          throw new CliError("OpenSearch returned incomplete index classification.", { code: "opensearch.invalidResponse" });
+        return !metadata.system && metadata.settings?.index?.hidden !== "true";
+      });
+    }
+    return rows.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   }
 }
 

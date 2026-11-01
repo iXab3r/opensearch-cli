@@ -3,7 +3,7 @@
 A general-purpose command-line client for [OpenSearch](https://opensearch.org/), built on
 [CliFactory](https://github.com/iXab3r/EyeAuras.CliFactory) (`@eyeauras/cli-factory`).
 
-> **Status: M1 Connect.** Profiles support Basic, bearer and open clusters; cluster info and health are available.
+> Profiles support Basic, bearer and open clusters; cluster info, health and index listing are available.
 > Further OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
 > The package has not been published.
 
@@ -32,6 +32,25 @@ Basic passwords preserve whitespace, removing one final line ending. Basic login
 Cluster info reports unsupported distributions/versions with a stderr warning and retains their metadata.
 Cluster health reads red state successfully; a wait timeout fails with the observed health on stdout.
 `ReadOnly` is enabled by default. `Update` and `Delete` start disabled.
+
+## List indices
+
+```text
+opensearch-cli indices list
+opensearch-cli indices list 'sample-*' --health yellow
+opensearch-cli indices list --include-hidden --json
+```
+
+Rows are sorted by name and show health, open/close status, primary and replica shard counts,
+document count and total store size. Hidden and system indices are excluded by metadata classification,
+even when named explicitly; `--include-hidden` includes both kinds visible to your profile.
+The default read uses CAT statistics plus a narrow cluster-state metadata projection, compatible
+with OpenSearch 2.x and 3.x; it requires `indices:monitor/stats` and `cluster:monitor/state` access.
+No index documents, mappings or unrelated settings are returned.
+
+JSON and RPC return the same array of `{name, health, status, primaries, replicas, docsCount, storeBytes}`.
+Counts are numbers and sizes are numbers in bytes; unavailable statistics and health (for example on a closed
+index) are `null`. Human sizes use binary units. No matches return `[]` successfully.
 
 ## Agreed direction
 

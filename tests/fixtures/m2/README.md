@@ -5,7 +5,6 @@ CAT returns numeric cells as strings and unavailable statistics as null; closed 
 empty health. The classification projection contains only the system flag and hidden setting.
 Names deliberately distinguish classification from a leading dot.
 
-Sources: [CAT indices](https://docs.opensearch.org/latest/api-reference/cat/cat-indices/),
-[2.19 CAT implementation](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/rest/action/cat/RestIndicesAction.java),
-and [2.0 index metadata serialization](https://github.com/opensearch-project/OpenSearch/blob/2.0/server/src/main/java/org/opensearch/cluster/metadata/IndexMetadata.java).
+Sources: the official CAT indices documentation, 2.19 CAT implementation and 2.0 metadata
+serialization linked in [testing](../../../docs/testing.md#index-list-fixtures).
 These APIs share the consumed shape across 2.x and 3.x; no 3.9-only system filter is used.
