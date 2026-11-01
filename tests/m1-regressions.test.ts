@@ -76,3 +76,17 @@ for (const scheme of ["basic", "bearer"]) test(`M1 missing ${scheme} credentials
   const [reply] = await fixture.rpc(app, [["cluster", "info"]]) as any[];
   for (const flag of expected) assert.ok(reply.error.message.includes(flag));
 });
+
+test("M1 Basic preserves password whitespace and configured context/port", async t => {
+  const { fixture, server, app } = await setup(t, "none");
+  const password = " synthetic password ";
+  const configured = "https://first.example.com:443/search/";
+  server.use(http.get(first + "search/", ({ request }) => {
+    assert.equal(request.headers.get("authorization"), "Basic " + Buffer.from(`operator:${password}`).toString("base64"));
+    return HttpResponse.json(info);
+  }), http.get(first + "search/_plugins/_security/authinfo", () => new HttpResponse(null, { status: 404 })));
+  const result = await fixture.run(app, ["profile", "configure", "spaced", "--url", configured, "--auth", "basic", "--username", "operator", "--password-stdin", "--json"], { input: Readable.from([password + "\n"]) });
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal((await fixture.profileStore.get("spaced")).values.url, configured);
+  await fixture.json(app, ["cluster", "info", "--profile", "spaced"]);
+});

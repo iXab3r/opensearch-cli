@@ -104,7 +104,8 @@ test("M1 missing credentials fail without prompts in JSON and RPC", async t => {
   const result = await fixture.run(app, ["cluster", "info", "--json"]);
   assert.notEqual(result.exitCode, 0);
   const error = JSON.parse(result.stderr).error;
-  assert.ok(error.next.some((argv: string[]) => argv.includes("configure") || argv.includes("login")));
+  assert.match(error.message, /--username/);
+  assert.match(error.message, /--password-stdin/);
   const [reply] = await fixture.rpc(app, [["cluster", "info"]]) as any[];
   assert.ok(reply.error);
 });

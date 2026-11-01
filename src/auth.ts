@@ -19,15 +19,35 @@ export function openSearchAuth(): AuthDefinition {
     validate: context => new OpenSearchClient({ url: String(context.profile.values.url), fetch: context.fetch, signal: context.signal, authorization: "Bearer " + context.token }).identity(),
   });
   return {
-    required: profile => profile.values.auth !== "none",
-    // Handlers enforce credential presence; no remote status probe runs before a service command.
+    // Every scheme validates the connection at configure/login/status, including open clusters.
+    required: () => true,
+    isReady: async context => context.profile.values.auth === "none" || !!await context.secrets.get(context.profile.values.auth === "bearer" ? "token" : "basic"),
     loginOptions: [
       { flags: "--username <name>", description: "Set the Basic authentication username" },
       { flags: "--password-stdin", description: "Read the Basic password from stdin" },
       ...(bearer.loginOptions ?? []),
     ],
     async login(context, options) {
-      if (context.profile.values.auth === "bearer") return bearer.login(context, options);
+      if (context.profile.values.auth === "none") {
+        await new OpenSearchClient({ url: String(context.profile.values.url), fetch: context.fetch, signal: context.signal }).info();
+        await context.secrets.delete("basic");
+        await context.secrets.delete("token");
+        return { authenticated: true, identity: { url: context.profile.values.url, reachable: true } };
+      }
+      if (context.profile.values.auth === "bearer") {
+        try {
+          const status = await bearer.login(context, options);
+          await context.secrets.delete("basic");
+          return status;
+        } catch (error) {
+          const code = error instanceof CliError && error.code === "auth.validationFailed"
+            ? (error.cause as { code?: string })?.code : undefined;
+          if (code?.startsWith("http.")) throw new CliError("OpenSearch rejected the authentication check.", {
+            code, cause: error, next: [["profile", "configure", context.profile.name, "--url", String(context.profile.values.url), "--auth", "bearer", "--token-stdin"]],
+          });
+          throw error;
+        }
+      }
       if (!options.passwordStdin || !context.stdinAvailable || typeof options.username !== "string" || !options.username || options.username.includes(":"))
         throw new CliError("Provide --username and --password-stdin for Basic authentication.", { code: "auth.missing", next: [["auth", "login", "--help"]] });
       const password = await readPassword(context);
@@ -40,9 +60,11 @@ export function openSearchAuth(): AuthDefinition {
       catch (cause) {
         throw new CliError("Could not save Basic credentials in secure storage.", { code: "auth.storeFailed", cause: diagnosticCause(cause, [password, authorization]), next: [["auth", "login", "--help"]] });
       }
+      await context.secrets.delete("token");
       return { authenticated: true, identity };
     },
     async status(context) {
+      if (context.profile.values.auth === "none") return { authenticated: true, identity: await (await clientFor(context)).identity() };
       const name = context.profile.values.auth === "bearer" ? "token" : "basic";
       if (!await context.secrets.get(name)) return { authenticated: false };
       return { authenticated: true, identity: await (await clientFor(context)).identity() };
