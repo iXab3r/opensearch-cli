@@ -3,6 +3,7 @@ import { openSearchAuth } from "./auth.js";
 import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type CountResult, type DataStreamSummary, type FieldSummary, type IndexSection, type IndexSummary } from "./client.js";
 import { readQuery } from "./query.js";
 import { version } from "./version.js";
+import { aggregateCommand, searchCommand } from "./search.js";
 
 export function createDefinition(): CliDefinition {
   return {
@@ -21,7 +22,10 @@ export function createDefinition(): CliDefinition {
       ],
     },
     auth: openSearchAuth(),
-    commands: [command("cluster", "Inspect the OpenSearch cluster", [
+    commands: [searchCommand(), aggregateCommand(), command("docs", "Read documents by ID", [
+      command("get <index> <ids...>", "Get one or more documents", async ({args},context)=>(await clientFor(context)).documents(String(args.index),args.ids as string[]),{permission:"ReadOnly"}),
+      command("exists <index> <id>", "Check whether a document exists", async ({args},context)=>(await clientFor(context)).documentExists(args.index,args.id),{permission:"ReadOnly"}),
+    ]), command("cluster", "Inspect the OpenSearch cluster", [
       command("info", "Show cluster version and identity", async (_, context) => {
         const info = await (await clientFor(context)).info();
         if (info.version.distribution !== "opensearch" || !/^[23]\./.test(info.version.number))

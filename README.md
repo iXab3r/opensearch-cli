@@ -3,7 +3,8 @@
 A general-purpose command-line client for [OpenSearch](https://opensearch.org/), built on
 [CliFactory](https://github.com/iXab3r/EyeAuras.CliFactory) (`@eyeauras/cli-factory`).
 
-> **M2 Explore data:** profiles, cluster info/health, indices, aliases, data streams, fields and count are available.
+> **M3 development:** search, document reads and aggregations are being added to the source tree.
+> npm `0.1.0` provides M1 Connect and M2 Explore data.
 > Further OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
 > Install with `npm install --global @eyeauras/opensearch-cli` (Node.js 22+).
 
@@ -89,6 +90,37 @@ fresh CLI stdin; JSON-RPC callers use a file because stdin carries the RPC proto
 All these commands are ReadOnly and use the selected profile's server permissions.
 Shard failure details retain index, shard, node and type/reason/cause chains. Diagnostic text
 uses Core's credential redaction before the domain result reaches any output or caller.
+
+## Search and read documents
+
+```text
+opensearch-cli search sample-* --q "category:example" --fields title,category --sort rank:desc --size 20
+opensearch-cli search sample-a --body-file request.json
+opensearch-cli search sample-a --body-file -
+opensearch-cli docs get sample-a doc-1
+opensearch-cli docs get sample-a doc-1 doc-2
+opensearch-cli docs exists sample-a doc-1
+opensearch-cli aggregate terms sample-a --field category --size 10
+opensearch-cli aggregate histogram sample-a --field created --interval 1h
+```
+
+Search returns one page (10 hits by default). `--fields` selects `_source` fields; `--sort` takes
+comma-separated fields with optional `:asc`/`:desc`. `--body-file` accepts a complete search body
+unchanged; `-` reads fresh stdin. RPC callers use a file. Choose either `--q` or a body.
+Explicit size/source/sort flags with a body are sent as search URL parameters.
+
+Human output shows hit metadata and source records. JSON and RPC retain search response fields,
+including highlights and arbitrary nested aggregations, plus `partial` signals for timeouts, early termination,
+failed shards and lower-bound totals. Human output warns on stderr; `--fail-on-partial` fails with
+`search.partial` while retaining the result on stdout (RPC: error result). A `gte` total prints `≥`.
+Invalid server query syntax returns `query.invalid` with its diagnostic reason.
+
+Single-document reads retain source and version/sequence metadata. Multiple IDs use one multi-get
+and return an array with each item's found/error state; a single missing ID fails with
+`document.notFound`. `docs exists` returns a boolean. Aggregation helpers are size-zero searches:
+terms shows bucket counts and error bounds; histogram uses a fixed interval and ISO bucket dates.
+Use a full search body for stats, percentiles, calendar intervals or nested aggregations.
+All commands are ReadOnly. PIT paging is tracked in [Story 12](https://github.com/iXab3r/opensearch-cli/issues/37).
 
 ## Agreed direction
 
