@@ -90,3 +90,27 @@ test("M1 Basic preserves password whitespace and configured context/port", async
   assert.equal((await fixture.profileStore.get("spaced")).values.url, configured);
   await fixture.json(app, ["cluster", "info", "--profile", "spaced"]);
 });
+
+// #576: built-in auth identity was displayed as one compact JSON cell in human mode.
+for (const action of ["configure", "login", "status"]) test(`M1 ${action} renders readable identity while machine data stays structured`, async t => {
+  const { fixture, server, app } = await setup(t, "basic", oldBasic);
+  const identity = { url: first, reachable: true, user: "operator", roles: ["reader", "monitor"] };
+  server.use(http.get(first, ({ request }) => {
+    assert.equal(request.headers.get("authorization"), "Basic " + Buffer.from("operator:synthetic-old").toString("base64"));
+    return HttpResponse.json(info);
+  }), http.get(first + "_plugins/_security/authinfo", () => HttpResponse.json({ user_name: "operator", roles: identity.roles })));
+  const credentialOptions = ["--username", "operator", "--password-stdin"];
+  const argv = action === "configure" ? ["profile", "configure", "default", "--url", first, "--auth", "basic", ...credentialOptions]
+    : ["auth", action, ...(action === "login" ? credentialOptions : [])];
+  const result = await fixture.run(app, argv, { input: Readable.from(["synthetic-old\n"]) });
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.match(result.stdout, /identity:\n  url: https:\/\/first\.example\.com\/\n  reachable: true\n  user: operator\n  roles:\n    - reader\n    - monitor/);
+  assert.match(result.stdout, /profile: default/);
+  assert.doesNotMatch(result.stdout + result.stderr, /identity: \{|synthetic-old/);
+  const expected = { ...(action === "configure" ? { configured: true } : {}), profile: "default", authenticated: true, identity };
+  assert.deepEqual(await fixture.json(app, argv, { input: Readable.from(["synthetic-old\n"]) }), expected);
+  const status = { authenticated: true, identity, profile: "default" };
+  assert.deepEqual(await app.execute(["auth", "status"]), status);
+  const [reply] = await fixture.rpc(app, [["auth", "status"]]) as { result: unknown }[];
+  assert.deepEqual(reply!.result, status);
+});
