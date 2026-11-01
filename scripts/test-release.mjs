@@ -49,7 +49,9 @@ test("Cake release targets preserve archive evidence and require owner approval"
     await writeFile(stub, `import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-const [tool, ...args] = process.argv.slice(2);
+const [tool, ...invocation] = process.argv.slice(2);
+const args = tool === 'npm' ? invocation.slice(2) : invocation;
+if (tool === 'npm') assert.deepEqual(invocation.slice(0, 2), ['--registry', 'https://registry.npmjs.org/']);
 const m = JSON.parse(fs.readFileSync(process.env.STUB_MANIFEST));
 assert.equal(process.env.NODE_AUTH_TOKEN, undefined);
 assert.equal(process.env.GITHUB_TOKEN, undefined);
@@ -71,7 +73,7 @@ else if (tool === 'npm' && args[0] === 'stage' && args[1] === 'download') {
   fs.copyFileSync(path.join(path.dirname(process.env.STUB_MANIFEST), m.file), 'downloaded.tgz');
 }
 else if (tool === 'npm' && args[0] === 'view') console.log(JSON.stringify(args[1].endsWith('@0.1.0') ? {version: m.version, 'dist.integrity': m.integrity} : m.version));
-else if (tool === 'npm' && args[0] === 'run' && args[1] === 'test:registry') {}
+else if (tool === 'npm' && args[0] === 'run' && args[1] === 'test:registry') assert.deepEqual(args, ['run', 'test:registry', '--', m.version]);
 else if (tool === 'curl') {
   const output = args[args.indexOf('--output') + 1];
   const headers = fs.readFileSync(args[args.indexOf('--header') + 1].slice(1), 'utf8');

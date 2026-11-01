@@ -127,7 +127,7 @@ public sealed class ReleaseFlow(BuildContext context) : IDisposable
             ["NPM_CONFIG_USERCONFIG"] = Path.Combine(temporary, "npmrc"), ["NPM_CONFIG_GLOBALCONFIG"] = Path.Combine(temporary, "global-npmrc"),
         };
         if (token is not null) environment["NPM_TOKEN"] = token;
-        return context.RunAt(directory, "npm", [.. arguments, "--registry", Registry], environment);
+        return context.RunAt(directory, "npm", ["--registry", Registry, .. arguments], environment);
     }
 
     private void Receipt(string status, string? stageId = null) => File.WriteAllText(Path.Combine(context.ReleaseDirectory, "release.json"),
