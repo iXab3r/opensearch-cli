@@ -48,16 +48,18 @@ files live outside the checkout and are removed on exit. No PowerShell or GitHub
    `v<version>` at that commit with the archive and manifest. The receipt says `published-verified`.
 
 ```sh
-teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--dry-run --param env.RELEASE_REVISION=<sha>
-teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--stage --param env.RELEASE_REVISION=<sha>
+teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--dry-run --param env.RELEASE_REVISION=<sha> --param release.build=<version>-dry-run
+teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--stage --param env.RELEASE_REVISION=<sha> --param release.build=<version>-stage
 # Owner approves the verified stage on npm before this command:
-teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--verify-registry --param env.RELEASE_REVISION=<sha>
+teamcity-cli jobs run EyeAuras_OpenSearchCli_NpmStage --param env.RELEASE_MODE=--verify-registry --param env.RELEASE_REVISION=<sha> --param release.build=<version>-verify
 ```
 
 Omit `--branch`: the VCS root uses main. Before verification after later main changes, select the
 same source revision in TeamCity's custom build revision settings. `RELEASE_REVISION` is a check,
 not a checkout selector. The job is manual and uses the exclusive `opensearch-cli-release` lock.
-Its default is `--dry-run`. Receipt and archive artifacts are published as `npm-release.zip` even
+Its default is `--dry-run`. The copied job's build number pattern requires the one-off `release.build`
+input; it labels the build and does not select the package version or checkout revision.
+Receipt and archive artifacts are published as `npm-release.zip` even
 when later verification fails.
 
 ## Failure and recovery

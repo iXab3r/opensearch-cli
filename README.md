@@ -5,7 +5,7 @@ A general-purpose command-line client for [OpenSearch](https://opensearch.org/),
 
 > **M2 Explore data:** profiles, cluster info/health, indices, aliases, data streams, fields and count are available.
 > Further OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
-> The package has not been published.
+> Install with `npm install --global @eyeauras/opensearch-cli` (Node.js 22+).
 
 ## Development
 
