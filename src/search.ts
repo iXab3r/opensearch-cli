@@ -1,9 +1,19 @@
-import {command, formatHuman, integerParser, recordView, type CommandDefinition} from "@eyeauras/cli-factory";
+import {CliError, command, formatHuman, integerParser, recordView, type CommandDefinition} from "@eyeauras/cli-factory";
 import {clientFor, type SearchResult} from "./client.js";
+import {readQuery} from "./query.js";
 
 /** One page uses the standard search API; Core renders every output format. */
 export function searchCommand(): CommandDefinition {
   return command("search <index>", "Search documents and inspect matching hits", async ({args,options}, context) => {
+    if (options.bodyFile !== undefined) {
+      if (options.q !== undefined) throw new CliError("Choose --q or --body-file.", {code:"usage"});
+      const body = await readQuery(String(options.bodyFile),context);
+      const parameters: Record<string,string> = {};
+      if (options.size !== undefined) parameters.size = String(options.size);
+      if (options.fields !== undefined) parameters._source = String(options.fields);
+      if (options.sort !== undefined) parameters.sort = String(options.sort);
+      return (await clientFor(context)).search(args.index,body,parameters);
+    }
     const body: Record<string,unknown> = {};
     if (options.q !== undefined) body.query = {query_string:{query:options.q}};
     if (options.fields !== undefined) body._source = String(options.fields).split(",").map(field=>field.trim());
@@ -15,6 +25,7 @@ export function searchCommand(): CommandDefinition {
     return (await clientFor(context)).search(args.index,body);
   }, {permission:"ReadOnly",options:[
     {flags:"--q <query>",description:"Match a Lucene query string"},
+    {flags:"--body-file <path>",description:"Read a search body from file or -"},
     {flags:"--fields <fields>",description:"Select comma-separated source fields"},
     {flags:"--sort <fields>",description:"Sort by comma-separated field:asc or field:desc"},
     {flags:"--size <count>",description:"Limit hits in this page (default 10)",parse:integerParser({min:0,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Size must be a non-negative integer."})},

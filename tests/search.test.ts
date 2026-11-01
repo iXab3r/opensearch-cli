@@ -86,3 +86,23 @@ test("M3 approved malformed-body and mutually-exclusive-input workflows make no 
   }
   assert.equal(requests,0);
 });
+
+for (const signal of ["timeout", "shards", "lower-bound"]) test(`M3 partial search ${signal} is visible and strict mode retains the result`,async t=>{
+  const {fixture,server,app}=await setupExplore(t);
+  const failures=[{shard:1,index:"sample-a",node:"sample-node",reason:{type:"query_shard_exception",reason:"Synthetic shard unavailable"}}];
+  const wire={...response,timed_out:signal==="timeout",_shards:signal==="shards"?{total:2,successful:1,skipped:0,failed:1,failures}:response._shards,
+    hits:{...response.hits,total:signal==="lower-bound"?{value:10000,relation:"gte"}:response.hits.total}};
+  server.use(http.post(origin+"/search/sample-a/_search",()=>HttpResponse.json(wire)));
+  const value=await fixture.json(app,["search","sample-a"]);
+  const human=await fixture.run(app,["search","sample-a"]);
+  assert.equal(human.exitCode,0,human.stderr);
+  if(signal==="timeout") {assert.equal((value as any).partial.timedOut,true);assert.match(human.stderr,/timed out/i);}
+  if(signal==="shards") {assert.deepEqual((value as any).partial.failures,failures);assert.match(human.stderr,/1\/2 shards failed/);assert.match(human.stderr,/Synthetic shard unavailable/);}
+  if(signal==="lower-bound") {assert.match(human.stdout,/≥ 10000/);assert.match(human.stderr,/lower bound/i);}
+  const strict=await fixture.run(app,["search","sample-a","--fail-on-partial","--json"]);
+  assert.equal(strict.exitCode,1);
+  assert.equal(JSON.parse(strict.stderr).error.code,"search.partial");
+  assert.deepEqual(JSON.parse(strict.stdout),value);
+  const [reply]=await fixture.rpc(app,[["search","sample-a","--fail-on-partial"]]) as {error:{code:string,data:{result:unknown}}}[];
+  assert.deepEqual(reply!.error.data.result,value);
+});

@@ -278,8 +278,9 @@ export class OpenSearchClient {
       });
   }
 
-  async search(index: string, body: Record<string, unknown>): Promise<SearchResult> {
-    const {value} = await this.request<SearchResponse>(`${encodeURIComponent(index)}/_search`, [], body, true);
+  async search(index: string, body: Record<string, unknown>, parameters: Record<string,string> = {}): Promise<SearchResult> {
+    const query = new URLSearchParams(parameters);
+    const {value} = await this.request<SearchResponse>(`${encodeURIComponent(index)}/_search${query.size ? "?"+query : ""}`, [], body, true);
     if (typeof value.took !== "number" || typeof value.timed_out !== "boolean" || !Array.isArray(value.hits?.hits) || !Number.isSafeInteger(value._shards?.failed))
       throw new CliError("OpenSearch returned incomplete search metadata.", {code:"opensearch.invalidResponse"});
     const failures = (value._shards.failures ?? []).map(failure => ({...failure, ...(failure.reason === undefined ? {} : {reason:safeShardReason(failure.reason)})}));
