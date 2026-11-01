@@ -1,4 +1,6 @@
-import type { CliDefinition } from "@eyeauras/cli-factory";
+import { CliError, command, parseServerUrl, recordView, type CliDefinition } from "@eyeauras/cli-factory";
+import { openSearchAuth } from "./auth.js";
+import { clientFor, type ClusterHealth, type ClusterInfo } from "./client.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -6,7 +8,56 @@ export function createDefinition(): CliDefinition {
     name: "opensearch-cli",
     description: "Explore and manage OpenSearch clusters",
     version,
-    permissions: {},
-    commands: [],
+    permissions: { categories: [{ name: "Delete", description: "Delete OpenSearch data", enabledByDefault: false }] },
+    profile: {
+      defaults: { auth: "basic" },
+      fields: [
+        { name: "url", flags: "--url <url>", description: "Set the OpenSearch cluster URL", required: true, normalize: value => parseServerUrl(String(value), "OpenSearch URL must be http(s)://host[:port][/context].").href },
+        { name: "auth", flags: "--auth <scheme>", description: "Choose basic, bearer or none", normalize: value => {
+          if (!["basic", "bearer", "none"].includes(String(value))) throw new CliError("Authentication must be basic, bearer or none.", { code: "usage" });
+          return value;
+        } },
+      ],
+    },
+    auth: openSearchAuth(),
+    commands: [command("cluster", "Inspect the OpenSearch cluster", [
+      command("info", "Show cluster version and identity", async (_, context) => {
+        const info = await (await clientFor(context)).info();
+        if (info.version.distribution !== "opensearch" || !/^[23]\./.test(info.version.number))
+          context.io.error.write("Warning: unsupported distribution or version; supported versions are OpenSearch 2.x and 3.x.\n");
+        return info;
+      }, { permission: "ReadOnly", view: recordView<ClusterInfo>({ fields: [
+        { label: "Cluster", value: value => value.cluster_name },
+        { label: "UUID", value: value => value.cluster_uuid },
+        { label: "Distribution", value: value => value.version.distribution },
+        { label: "Version", value: value => value.version.number },
+        { label: "Build date", value: value => value.version.build_date },
+        { label: "Build hash", value: value => value.version.build_hash },
+        { label: "Lucene", value: value => value.version.lucene_version },
+      ] }) }),
+      command("health", "Show cluster health and shard allocation", async ({ options }, context) =>
+        (await clientFor(context)).health(options as { index?: string; level?: string; waitForStatus?: string; timeout?: string }), {
+        permission: "ReadOnly",
+        options: [
+          { flags: "--index <pattern>", description: "Select indices or data streams" },
+          { flags: "--level <level>", description: "Choose cluster, indices or shards" },
+          { flags: "--wait-for-status <status>", description: "Wait for green, yellow or red" },
+          { flags: "--timeout <duration>", description: "Set the OpenSearch wait timeout" },
+        ],
+        view: recordView<ClusterHealth>({ fields: [
+          { label: "Cluster", value: value => value.cluster_name },
+          { label: "Status", value: value => value.status },
+          { label: "Timed out", value: value => value.timed_out },
+          { label: "Nodes", value: value => value.number_of_nodes },
+          { label: "Data nodes", value: value => value.number_of_data_nodes },
+          { label: "Primary shards", value: value => value.active_primary_shards },
+          { label: "Active shards", value: value => value.active_shards },
+          { label: "Relocating", value: value => value.relocating_shards },
+          { label: "Initializing", value: value => value.initializing_shards },
+          { label: "Unassigned", value: value => value.unassigned_shards },
+          { label: "Active %", value: value => value.active_shards_percent_as_number },
+        ], sections: [{ title: () => "Indices", lines: value => value.indices ? Object.entries(value.indices).map(([name, index]) => `${name}: ${index.status}`) : undefined }] }),
+      }),
+    ])],
   };
 }

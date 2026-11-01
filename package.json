@@ -38,10 +38,11 @@
     "test": "npm run build && node --test dist/tests/*.test.js",
     "start": "node dist/src/bin.js",
     "test:package": "node scripts/test-package.mjs",
-    "test:registry": "node scripts/test-registry.mjs"
+    "test:registry": "node scripts/test-registry.mjs",
+    "proof": "npm run build && node scripts/proof.mjs"
   },
   "dependencies": {
-    "@eyeauras/cli-factory": "0.5.2"
+    "@eyeauras/cli-factory": "0.5.3"
   },
   "devDependencies": {
     "typescript": "7.0.2",
