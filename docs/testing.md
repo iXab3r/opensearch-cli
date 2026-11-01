@@ -65,3 +65,7 @@ mapping/alias details use Core's structured human fallback; creation dates are I
 from 2.19/3.2: nested objects, multi-fields, an underscore-prefixed user field, reserved metadata
 and a cross-index type conflict. Capabilities' optional indices list is preserved when supplied;
 mapping membership fills the common-type case. Fixtures contain no real schema or field values.
+`count.test.ts` models the [Count API](https://docs.opensearch.org/latest/api-reference/search-apis/count/)
+2.19/3.2 shape and uses real temporary query files plus invocation stdin; only HTTP is mocked.
+Count retains shard failures, warns human callers, and supports `search.partial` with the result
+under `--fail-on-partial`. Stdin queries require fresh CLI stdin; RPC uses query files.

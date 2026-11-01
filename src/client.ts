@@ -53,6 +53,14 @@ export type IndexSection = "settings" | "mappings" | "aliases";
 /** Field types and their concrete indices; a conflict retains every observed type. */
 export interface FieldSummary { name: string; types: string[]; conflict: boolean; indicesByType: Record<string, string[]> }
 interface MappingNode { type?: string; properties?: Record<string, MappingNode>; fields?: Record<string, MappingNode> }
+/** Count observations retain shard evidence so incomplete counts cannot look exact. */
+export interface CountResult {
+  count: number;
+  _shards: { total: number; successful: number; skipped?: number; failed: number; failures?: ShardFailure[] };
+  partial: { failedShards: number; totalShards: number; failures: ShardFailure[] };
+}
+/** OpenSearch failure details retained in the domain result; never used as an exception body. */
+export interface ShardFailure { shard?: number; index?: string; reason?: { type?: string; reason?: string } }
 
 // Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
 const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone"]);
@@ -61,10 +69,11 @@ const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignore
 export class OpenSearchClient {
   constructor(private readonly connection: { url: string; fetch: typeof fetch; signal: AbortSignal; authorization?: string }) {}
 
-  private async get<T>(path: string, accepted: readonly number[] = []): Promise<{ status: number; value: T }> {
+  private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown): Promise<{ status: number; value: T }> {
     const { url, fetch, signal, authorization } = this.connection;
     const response = await fetchWithRedirects(fetch, new URL(path, url), {
-      signal, headers: { accept: "application/json", ...(authorization ? { authorization } : {}) },
+      signal, ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
+      headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }), ...(authorization ? { authorization } : {}) },
     });
     if (!response.ok && !accepted.includes(response.status)) {
       await response.body?.cancel();
@@ -78,7 +87,7 @@ export class OpenSearchClient {
   }
 
   async info(): Promise<ClusterInfo> {
-    const { value } = await this.get<ClusterInfo>("");
+    const { value } = await this.request<ClusterInfo>("");
     if (!value || typeof value.cluster_name !== "string" || typeof value.cluster_uuid !== "string" || typeof value.version?.number !== "string")
       throw new CliError("OpenSearch returned incomplete cluster metadata.", { code: "opensearch.invalidResponse" });
     return value;
@@ -88,7 +97,7 @@ export class OpenSearchClient {
     await this.info();
     const base = { url: this.connection.url, reachable: true as const };
     try {
-      const { value } = await this.get<{ user_name?: string; roles?: string[] }>("_plugins/_security/authinfo");
+      const { value } = await this.request<{ user_name?: string; roles?: string[] }>("_plugins/_security/authinfo");
       return {
         ...base,
         ...(typeof value?.user_name === "string" ? { user: value.user_name } : {}),
@@ -105,7 +114,7 @@ export class OpenSearchClient {
     for (const [key, value] of [["level", options.level], ["wait_for_status", options.waitForStatus], ["timeout", options.timeout]])
       if (value !== undefined) query.set(key!, value);
     const path = "_cluster/health" + (options.index === undefined ? "" : "/" + encodeURIComponent(options.index)) + (query.size ? "?" + query : "");
-    const { status, value } = await this.get<ClusterHealth>(path, [408]);
+    const { status, value } = await this.request<ClusterHealth>(path, [408]);
     if (!value || typeof value.status !== "string" || typeof value.timed_out !== "boolean")
       throw new CliError("OpenSearch returned incomplete cluster health.", { code: "opensearch.invalidResponse" });
     if (value.timed_out) throw new CliError("OpenSearch timed out waiting for cluster health.", { code: "opensearch.healthTimeout", result: value });
@@ -120,7 +129,7 @@ export class OpenSearchClient {
       expand_wildcards: options.includeHidden ? "all" : "open,closed", allow_no_indices: "true",
     });
     if (options.health !== undefined) query.set("health", options.health);
-    const { value } = await this.get<Record<string, unknown>[]>(`_cat/indices/${pattern}?${query}`);
+    const { value } = await this.request<Record<string, unknown>[]>(`_cat/indices/${pattern}?${query}`);
     if (!Array.isArray(value)) throw new CliError("OpenSearch returned an invalid index list.", { code: "opensearch.invalidResponse" });
     let rows = value.map(row => {
       if (!row || typeof row.index !== "string" || typeof row.health !== "string" || typeof row.status !== "string")
@@ -136,7 +145,7 @@ export class OpenSearchClient {
         filter_path: "metadata.indices.*.system,metadata.indices.*.settings.index.hidden",
         expand_wildcards: "all", allow_no_indices: "true",
       });
-      const { value: classification } = await this.get<{
+      const { value: classification } = await this.request<{
         metadata?: { indices?: Record<string, { system: boolean; settings?: { index?: { hidden?: string } } }> };
       }>(`_cluster/state/metadata/${pattern}?${classificationQuery}`);
       rows = rows.filter(row => {
@@ -151,14 +160,14 @@ export class OpenSearchClient {
 
   async aliases(pattern = "*"): Promise<AliasSummary[]> {
     const query = new URLSearchParams({ format: "json", h: "alias,index,is_write_index,filter,routing.index,routing.search" });
-    const { value } = await this.get<Record<string, string>[]>(`_cat/aliases/${encodeURIComponent(pattern)}?${query}`);
+    const { value } = await this.request<Record<string, string>[]>(`_cat/aliases/${encodeURIComponent(pattern)}?${query}`);
     return value.map(row => ({ alias: row.alias!, index: row.index!, writeIndex: row.is_write_index === "-" ? null : row.is_write_index === "true",
       hasFilter: row.filter === "*", hasRouting: row["routing.index"] !== "-" || row["routing.search"] !== "-" }))
       .sort((a, b) => a.alias.localeCompare(b.alias) || a.index.localeCompare(b.index));
   }
 
   async dataStreams(pattern = "*"): Promise<DataStreamSummary[]> {
-    const { status, value } = await this.get<{ error?: { type?: string }; data_streams: {
+    const { status, value } = await this.request<{ error?: { type?: string }; data_streams: {
       name: string; timestamp_field: { name: string }; generation: number; indices: unknown[]; status: string;
     }[] }>(`_data_stream/${encodeURIComponent(pattern)}`, [404]);
     if (status === 404) {
@@ -173,7 +182,7 @@ export class OpenSearchClient {
   async index(index: string, section?: IndexSection): Promise<IndexInspection | IndexSettings | Record<string, unknown>> {
     const path = encodeURIComponent(index) + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : "");
     let value: Record<string, { settings?: { index?: Record<string, string> }; mappings?: Record<string, unknown>; aliases?: Record<string, unknown> }>;
-    try { ({ value } = await this.get<typeof value>(path + "?flat_settings=false")); }
+    try { ({ value } = await this.request<typeof value>(path + "?flat_settings=false")); }
     catch (cause) {
       if (cause instanceof HttpError && cause.status === 404)
         throw new CliError("The index was not found.", { code: "index.notFound", cause, next: [["indices", "list"]] });
@@ -196,8 +205,8 @@ export class OpenSearchClient {
 
   async fields(pattern: string, options: { type?: string; filter?: string; includeMeta?: boolean }): Promise<FieldSummary[]> {
     const path = encodeURIComponent(pattern);
-    const { value: mappings } = await this.get<Record<string, { mappings: MappingNode }>>(`${path}/_mapping?allow_no_indices=true`);
-    const { value: capabilities } = await this.get<{ indices: string[]; fields: Record<string, Record<string, { indices?: string[] }>> }>(`${path}/_field_caps?fields=*&allow_no_indices=true`);
+    const { value: mappings } = await this.request<Record<string, { mappings: MappingNode }>>(`${path}/_mapping?allow_no_indices=true`);
+    const { value: capabilities } = await this.request<{ indices: string[]; fields: Record<string, Record<string, { indices?: string[] }>> }>(`${path}/_field_caps?fields=*&allow_no_indices=true`);
     const grouped = new Map<string, Map<string, Set<string>>>();
     const walk = (properties: Record<string, MappingNode>, prefix: string, index: string): void => {
       for (const [key, node] of Object.entries(properties)) {
@@ -224,6 +233,16 @@ export class OpenSearchClient {
         const types = [...groups.keys()].sort();
         return { name, types, conflict: types.length > 1, indicesByType: Object.fromEntries(types.map(type => [type, [...groups.get(type)!].sort()])) };
       });
+  }
+
+  async count(index: string, options: { q?: string; query?: Record<string, unknown> }): Promise<CountResult> {
+    if (options.q !== undefined && options.query !== undefined)
+      throw new CliError("Choose --q or --query-file.", { code: "usage" });
+    const query = options.q === undefined ? "" : "?" + new URLSearchParams({ q: options.q });
+    const { value } = await this.request<Omit<CountResult, "partial">>(`${encodeURIComponent(index)}/_count${query}`, [], options.query === undefined ? undefined : { query: options.query });
+    if (!Number.isSafeInteger(value?.count) || value.count < 0 || !Number.isSafeInteger(value._shards?.total) || !Number.isSafeInteger(value._shards?.failed))
+      throw new CliError("OpenSearch returned incomplete count metadata.", { code: "opensearch.invalidResponse" });
+    return { ...value, partial: { failedShards: value._shards.failed, totalShards: value._shards.total, failures: value._shards.failures ?? [] } };
   }
 }
 

@@ -45,6 +45,10 @@ for (const source of ["file", "stdin"]) test(`M2 count reads a Query DSL query o
     cwd: directory, ...(source === "stdin" ? { input: Readable.from([JSON.stringify(query)]) } : {}),
   });
   assert.equal(result.exitCode, 0, result.stderr); assert.deepEqual(JSON.parse(result.stdout), expected);
+  if (source === "file") {
+    const [reply] = await fixture.rpc(app, [["count", "sample-a", "--query-file", join(directory, "query.json")]]) as { result: unknown }[];
+    assert.deepEqual(reply!.result, expected);
+  }
 });
 test("M2 count preserves shard failures, warns humans and can fail with its result", async t => {
   const { fixture, server, app } = await setupExplore(t);

@@ -1,6 +1,7 @@
 import { CliError, command, parseServerUrl, recordView, tableView, type CliDefinition } from "@eyeauras/cli-factory";
 import { openSearchAuth } from "./auth.js";
-import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type FieldSummary, type IndexSection, type IndexSummary } from "./client.js";
+import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type CountResult, type DataStreamSummary, type FieldSummary, type IndexSection, type IndexSummary } from "./client.js";
+import { readQuery } from "./query.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -114,6 +115,25 @@ export function createDefinition(): CliDefinition {
           { header: "Indices by type", value: row => Object.entries(row.indicesByType).map(([type, indices]) => `${type}: ${indices.join(", ")}`).join("; ") },
         ], empty: "No fields found." }),
       }),
-    ])],
+    ]), command("count <index>", "Count matching documents", async ({ args, options }, context) => {
+      if (options.q !== undefined && options.queryFile !== undefined) throw new CliError("Choose --q or --query-file.", { code: "usage" });
+      const result = await (await clientFor(context)).count(args.index, {
+        ...(options.q === undefined ? {} : { q: String(options.q) }),
+        ...(options.queryFile === undefined ? {} : { query: await readQuery(String(options.queryFile), context) }),
+      });
+      if (result.partial.failedShards) {
+        if (options.failOnPartial) throw new CliError("The document count is partial.", { code: "search.partial", result });
+        const reasons = result.partial.failures.slice(0, 3).map(failure => failure.reason?.reason).filter(Boolean).join("; ").replace(/[\r\n\t]+/g, " ");
+        context.progress(`Warning: ${result.partial.failedShards}/${result.partial.totalShards} shards failed.${reasons ? " " + reasons : ""}`);
+      }
+      return result;
+    }, { permission: "ReadOnly", options: [
+      { flags: "--q <query>", description: "Match a Lucene query string" },
+      { flags: "--query-file <path>", description: "Read Query DSL from file or -" },
+      { flags: "--fail-on-partial", description: "Fail when any shard fails" },
+    ], view: recordView<CountResult>({ fields: [
+      { label: "Count", value: value => value.count },
+      { label: "Partial", value: value => value.partial.failedShards > 0 },
+    ] }) })],
   };
 }
