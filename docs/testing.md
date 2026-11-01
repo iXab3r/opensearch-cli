@@ -69,3 +69,7 @@ mapping membership fills the common-type case. Fixtures contain no real schema o
 2.19/3.2 shape and uses real temporary query files plus invocation stdin; only HTTP is mocked.
 Count retains shard failures, warns human callers, and supports `search.partial` with the result
 under `--fail-on-partial`. Stdin queries require fresh CLI stdin; RPC uses query files.
+The source-derived join fixture covers generated field membership via `include_unmapped=true`
+and the reserved `_parent_join` marker. The mappings-section fixture rejects the unsupported
+`flat_settings` parameter, matching the 2.19/3.2 REST handler. Strict human count diagnostics
+retain failed/total shards and first failure reasons through Core's cause rendering.

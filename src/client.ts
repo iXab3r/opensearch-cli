@@ -63,7 +63,7 @@ export interface CountResult {
 export interface ShardFailure { shard?: number; index?: string; reason?: { type?: string; reason?: string } }
 
 // Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
-const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone"]);
+const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone", "_parent_join"]);
 
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
@@ -182,7 +182,7 @@ export class OpenSearchClient {
   async index(index: string, section?: IndexSection): Promise<IndexInspection | IndexSettings | Record<string, unknown>> {
     const path = encodeURIComponent(index) + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : "");
     let value: Record<string, { settings?: { index?: Record<string, string> }; defaults?: { index?: Record<string, string> }; mappings?: Record<string, unknown>; aliases?: Record<string, unknown> }>;
-    try { ({ value } = await this.request<typeof value>(path + "?flat_settings=false" + (section === "mappings" ? "" : "&include_defaults=true"))); }
+    try { ({ value } = await this.request<typeof value>(path + (section === "mappings" ? "" : "?flat_settings=false&include_defaults=true"))); }
     catch (cause) {
       if (cause instanceof HttpError && cause.status === 404)
         throw new CliError("The index was not found.", { code: "index.notFound", cause, next: [["indices", "list"]] });
@@ -206,7 +206,7 @@ export class OpenSearchClient {
   async fields(pattern: string, options: { type?: string; filter?: string; includeMeta?: boolean }): Promise<FieldSummary[]> {
     const path = encodeURIComponent(pattern);
     const { value: mappings } = await this.request<Record<string, { mappings: MappingNode }>>(`${path}/_mapping?allow_no_indices=true`);
-    const { value: capabilities } = await this.request<{ indices: string[]; fields: Record<string, Record<string, { indices?: string[] }>> }>(`${path}/_field_caps?fields=*&allow_no_indices=true`);
+    const { value: capabilities } = await this.request<{ indices: string[]; fields: Record<string, Record<string, { indices?: string[] }>> }>(`${path}/_field_caps?fields=*&allow_no_indices=true&include_unmapped=true`);
     const grouped = new Map<string, Map<string, Set<string>>>();
     const walk = (properties: Record<string, MappingNode>, prefix: string, index: string): void => {
       for (const [key, node] of Object.entries(properties)) {

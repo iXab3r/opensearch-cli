@@ -122,9 +122,10 @@ export function createDefinition(): CliDefinition {
         ...(options.queryFile === undefined ? {} : { query: await readQuery(String(options.queryFile), context) }),
       });
       if (result.partial.failedShards) {
-        if (options.failOnPartial) throw new CliError("The document count is partial.", { code: "search.partial", result });
         const reasons = result.partial.failures.slice(0, 3).map(failure => failure.reason?.reason).filter(Boolean).join("; ").replace(/[\r\n\t]+/g, " ");
-        context.progress(`Warning: ${result.partial.failedShards}/${result.partial.totalShards} shards failed.${reasons ? " " + reasons : ""}`);
+        const details = `${result.partial.failedShards}/${result.partial.totalShards} shards failed.${reasons ? " " + reasons : ""}`;
+        if (options.failOnPartial) throw new CliError("The document count is partial.", { code: "search.partial", result, cause: new Error(details) });
+        context.progress(`Warning: ${details}`);
       }
       return result;
     }, { permission: "ReadOnly", options: [
