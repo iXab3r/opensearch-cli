@@ -31,16 +31,19 @@ Those laws apply here unless this file says otherwise.
    with an analysis of its existing consumers. Do not open issues or PRs in CliFactory without it.
 5. **No IPC.** The CLI is a standalone process; do not add `@eyeauras/cli-factory-ipc`.
 6. **Versions.** Support OpenSearch 2.x and 3.x. Amazon OpenSearch Service is separate, optional work.
-7. **CI is TeamCity.** Do not add GitHub Actions workflows.
-8. **Offline tests.** Default tests mock `fetch` with MSW and never contact a cluster. Real-cluster
-   proof is local-only, read-only and never runs in CI.
+7. **CI is TeamCity, main only.** Same scheme as CliFactory: Cake Frosting driver + `build/teamcity.sh`.
+   No GitHub Actions workflows and no PowerShell anywhere in the infrastructure.
+8. **Offline tests.** Tests mock `fetch` with MSW and never contact a cluster; there are no container or
+   live tests in CI. Fixtures may be prepared from a real server, but its address never appears in
+   the repository, issues, PRs or logs, and every fixture is sanitized first.
 9. **Privacy gate before every commit.** Check the tracked tree and staged diff for credentials,
    private hosts and unsanitized service responses. Unresolved findings block the commit.
 
 ## Delivery
 
-- GitHub Issues is the tracker. Scope and acceptance live in the issue; evidence in the issue or PR.
+- GitHub Issues is the tracker. Start from the [roadmap](https://github.com/iXab3r/opensearch-cli/issues/7). Scope and acceptance live in the issue; evidence in the issue or PR.
 - New branches default to `bugfix/`, unless an exact name is requested. Never use `codex/`.
 - Never rewrite pushed history or force-push.
-- Planning approval does not authorize npm publication, TeamCity configuration changes or work against
+- npm releases are staged from TeamCity and approved by the owner with 2FA.
+- Planning approval does not authorize npm staging or publication, TeamCity configuration changes or work against
   real clusters; each needs explicit owner approval.
