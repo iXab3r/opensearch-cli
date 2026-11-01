@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Writable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { http, HttpResponse } from "msw";
 import { origin, setupExplore } from "./explore-fixture.js";
 
@@ -243,4 +243,51 @@ test("Story37 failed output awaits PIT cleanup and preserves a cleanup error", a
   assert.equal(cleaned, true);
   assert.match(result.stderr, /Synthetic output failed/);
   assert.match(result.stderr, /cleanup/i);
+});
+
+// Regression601: independent review reproduced a human view crash hiding failed domain results.
+test("M3 regression601 preserves human paging counts and partial/cleanup diagnostics", async t => {
+  const { fixture, server, app } = await setup(t);
+  let mode: "budget" | "partial" | "cleanup" = "budget";
+  server.use(
+    http.post(origin + "/search/_search", () => HttpResponse.json({ ...page(mode === "budget" ? [1, 2] : [1]), timed_out: mode === "partial" })),
+    http.delete(origin + "/search/_search/point_in_time", () => HttpResponse.json({ pits: [{ pit_id: "sample-pit", successful: mode !== "cleanup" }] })),
+  );
+  const budget = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "1"]);
+  assert.equal(budget.exitCode, 1);
+  assert.match(budget.stderr, /Search exceeds the result budget/);
+  assert.match(budget.stdout, /Retrieved:\s+1/); assert.match(budget.stdout, /Observed:\s+2/); assert.match(budget.stdout, /Budget:\s+1/);
+  mode = "partial";
+  const partial = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "3", "--fail-on-partial"]);
+  assert.equal(partial.exitCode, 1);
+  assert.match(partial.stderr, /Search results are incomplete/);
+  assert.match(partial.stdout, /Retrieved:\s+0/); assert.match(partial.stdout, /Observed:\s+1/); assert.match(partial.stdout, /Timed out:\s+true/);
+  mode = "cleanup";
+  const cleanup = await fixture.run(app, ["search", "sample-a", "--all", "--max-results", "3"]);
+  assert.equal(cleanup.exitCode, 1);
+  assert.match(cleanup.stderr, /cleanup failed/i);
+  assert.match(cleanup.stdout, /Retrieved:\s+1/); assert.match(cleanup.stdout, /PIT cleanup failed:\s+true/);
+});
+
+// Regression602: OpenSearch expands each compound-sort property into one cursor slot.
+test("M3 regression602 pages a full-body compound sort without rejecting its valid cursor", async t => {
+  const { fixture, server, app, state } = await setup(t);
+  const body = { query: { term: { category: "example" } }, _source: ["title"], sort: { rank: "asc", created: "desc" } };
+  const documents = hits([1, 2]).map((hit, i) => ({ ...hit, sort: [10 - i, `2026-01-0${i + 1}`, "sample-a", i + 1] }));
+  server.use(http.post(origin + "/search/_search", async ({ request }) => {
+    const actual = await request.json() as { query: unknown; _source: unknown; sort: Record<string, unknown>[]; search_after?: unknown[] };
+    // Accept both valid compound and expanded wire forms; assert the service sort semantics.
+    assert.deepEqual(actual.sort.flatMap(entry => Object.entries(entry)), [
+      ["rank", "asc"], ["created", "desc"], ["_index", "asc"], ["_shard_doc", { order: "asc" }],
+    ]);
+    assert.deepEqual(actual.query, body.query); assert.deepEqual(actual._source, body._source);
+    assert.deepEqual(actual.search_after, state.pages ? documents[state.pages - 1]!.sort : undefined);
+    const next = documents.slice(state.pages, state.pages + 1);
+    state.pages++;
+    return HttpResponse.json({ ...page([]), hits: { hits: next } });
+  }));
+  const result = await fixture.run(app, ["search", "sample-a", "--body-file", "-", "--all", "--max-results", "3", "--size", "1", "--json"], { input: Readable.from([JSON.stringify(body)]) });
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.deepEqual(result.stdout.trim().split("\n").map(line => JSON.parse(line)), documents);
+  assert.equal(state.pages, 3); assert.equal(state.closed, 1);
 });
