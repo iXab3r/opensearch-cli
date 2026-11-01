@@ -1,6 +1,6 @@
 import { CliError, command, parseServerUrl, recordView, tableView, type CliDefinition } from "@eyeauras/cli-factory";
 import { openSearchAuth } from "./auth.js";
-import { clientFor, type ClusterHealth, type ClusterInfo, type IndexSummary } from "./client.js";
+import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type DataStreamSummary, type IndexSummary } from "./client.js";
 import { version } from "./version.js";
 
 export function createDefinition(): CliDefinition {
@@ -75,6 +75,24 @@ export function createDefinition(): CliDefinition {
           { header: "Docs", value: row => row.docsCount },
           { header: "Store", value: row => row.storeBytes, format: "bytes" },
         ], empty: "No indices found." }),
+      }),
+    ]), command("aliases", "Explore index aliases", [
+      command("list [pattern]", "List alias targets and flags", async ({ args }, context) =>
+        (await clientFor(context)).aliases(args.pattern === undefined ? undefined : String(args.pattern)), {
+        permission: "ReadOnly", view: tableView<AliasSummary>({ columns: [
+          { header: "Alias", value: row => row.alias }, { header: "Index", value: row => row.index },
+          { header: "Write", value: row => row.writeIndex }, { header: "Filter", value: row => row.hasFilter },
+          { header: "Routing", value: row => row.hasRouting },
+        ], empty: "No aliases found." }),
+      }),
+    ]), command("data-streams", "Explore data streams", [
+      command("list [pattern]", "List data stream metadata", async ({ args }, context) =>
+        (await clientFor(context)).dataStreams(args.pattern === undefined ? undefined : String(args.pattern)), {
+        permission: "ReadOnly", view: tableView<DataStreamSummary>({ columns: [
+          { header: "Name", value: row => row.name }, { header: "Timestamp", value: row => row.timestampField },
+          { header: "Generation", value: row => row.generation }, { header: "Backing indices", value: row => row.backingIndexCount },
+          { header: "Health", value: row => row.health },
+        ], empty: "No data streams found." }),
       }),
     ])],
   };

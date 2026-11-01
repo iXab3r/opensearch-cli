@@ -49,3 +49,10 @@ and [2.0 index metadata serialization](https://github.com/opensearch-project/Ope
 The classifier uses metadata available before CAT's 3.9-only system filter. The fixture privacy
 scanner recognizes the exact JSON column keys `docs.count` and `store.size` as protocol names;
 it continues to scan their values and adjacent provenance for private hosts and credentials.
+
+## Explore-data wire sources
+
+The inline synthetic fixtures in `aliases-streams.test.ts` model OpenSearch 2.19/3.2
+[CAT aliases](https://docs.opensearch.org/latest/api-reference/cat/cat-aliases/) and
+[GetDataStream serialization](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/action/admin/indices/datastream/GetDataStreamAction.java).
+All names, IDs, routing values and counts are invented; no captures or real endpoints are used.

@@ -41,6 +41,11 @@ function catCount(value: unknown): number | null {
   throw new CliError("OpenSearch returned an invalid index count or size.", { code: "opensearch.invalidResponse" });
 }
 
+/** One alias-to-index relationship; routing and filtering expose presence only. */
+export interface AliasSummary { alias: string; index: string; writeIndex: boolean | null; hasFilter: boolean; hasRouting: boolean }
+/** A data stream's observed metadata, without document contents. */
+export interface DataStreamSummary { name: string; timestampField: string; generation: number; backingIndexCount: number; health: string }
+
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
   constructor(private readonly connection: { url: string; fetch: typeof fetch; signal: AbortSignal; authorization?: string }) {}
@@ -131,6 +136,27 @@ export class OpenSearchClient {
       });
     }
     return rows.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  }
+
+  async aliases(pattern = "*"): Promise<AliasSummary[]> {
+    const query = new URLSearchParams({ format: "json", h: "alias,index,is_write_index,filter,routing.index,routing.search" });
+    const { value } = await this.get<Record<string, string>[]>(`_cat/aliases/${encodeURIComponent(pattern)}?${query}`);
+    return value.map(row => ({ alias: row.alias!, index: row.index!, writeIndex: row.is_write_index === "-" ? null : row.is_write_index === "true",
+      hasFilter: row.filter === "*", hasRouting: row["routing.index"] !== "-" || row["routing.search"] !== "-" }))
+      .sort((a, b) => a.alias.localeCompare(b.alias) || a.index.localeCompare(b.index));
+  }
+
+  async dataStreams(pattern = "*"): Promise<DataStreamSummary[]> {
+    const { status, value } = await this.get<{ error?: { type?: string }; data_streams: {
+      name: string; timestamp_field: { name: string }; generation: number; indices: unknown[]; status: string;
+    }[] }>(`_data_stream/${encodeURIComponent(pattern)}`, [404]);
+    if (status === 404) {
+      if (value.error?.type === "resource_not_found_exception") return [];
+      throw new HttpError(status, "OpenSearch rejected the data stream request.");
+    }
+    return value.data_streams.map(stream => ({ name: stream.name, timestampField: stream.timestamp_field.name,
+      generation: stream.generation, backingIndexCount: stream.indices.length, health: stream.status.toLowerCase() }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 }
 
