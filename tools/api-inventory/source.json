@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/opensearch-project/opensearch-api-specification",
+  "revision": "533e57a2d5fc86d7d61c4617aa19cfb6b4526463",
+  "namespacesPath": "spec/namespaces",
+  "supportedMajors": [2, 3]
+}
