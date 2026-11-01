@@ -66,8 +66,9 @@ test("M2 fields scopes generated join fields and makes reserved join metadata op
     return HttpResponse.json({ indices: ["sample-a", "sample-b"], fields: { relation: caps("join"), "relation#product": caps("parent"), _parent_join: caps("_parent_join") } });
   }));
   const rows = await fixture.json(app, ["fields", "list", "sample-*"]) as { name: string; indicesByType: Record<string, string[]> }[];
-  assert.deepEqual(rows.find(row => row.name === "relation#product")!.indicesByType, { parent: ["sample-a"] });
-  assert.equal(rows.some(row => row.name === "_parent_join"), false);
+  assert.deepEqual({ indicesByType: rows.find(row => row.name === "relation#product")!.indicesByType,
+    includesReserved: rows.some(row => row.name === "_parent_join") },
+  { indicesByType: { parent: ["sample-a"] }, includesReserved: false });
   const meta = await fixture.json(app, ["fields", "list", "sample-*", "--include-meta"]) as { name: string; indicesByType: Record<string, string[]> }[];
   assert.deepEqual(meta.find(row => row.name === "_parent_join")!.indicesByType, { _parent_join: ["sample-a"] });
 });
