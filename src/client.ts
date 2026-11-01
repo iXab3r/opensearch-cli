@@ -59,11 +59,24 @@ export interface CountResult {
   _shards: { total: number; successful: number; skipped?: number; failed: number; failures?: ShardFailure[] };
   partial: { failedShards: number; totalShards: number; failures: ShardFailure[] };
 }
-/** OpenSearch failure details retained in the domain result; never used as an exception body. */
-export interface ShardFailure { shard?: number; index?: string; reason?: { type?: string; reason?: string } }
+/** Selected shard identity and redacted diagnostics shared by every result/output path. */
+export interface ShardFailure { shard?: number; index?: string; node?: string; reason?: ShardFailureReason }
+/** Supported OpenSearch cause structure; diagnostic strings use Core's redaction policy. */
+export interface ShardFailureReason { type?: string; reason?: string; caused_by?: ShardFailureReason; root_cause?: ShardFailureReason[]; suppressed?: ShardFailureReason[] }
+
+function safeShardReason(reason: ShardFailureReason): ShardFailureReason {
+  const safe = diagnosticCause(Object.assign(new Error(reason.reason ?? ""), { name: reason.type ?? "Error" }));
+  return {
+    ...(reason.type === undefined ? {} : { type: safe.name }),
+    ...(reason.reason === undefined ? {} : { reason: safe.message }),
+    ...(reason.caused_by === undefined ? {} : { caused_by: safeShardReason(reason.caused_by) }),
+    ...(reason.root_cause === undefined ? {} : { root_cause: reason.root_cause.map(safeShardReason) }),
+    ...(reason.suppressed === undefined ? {} : { suppressed: reason.suppressed.map(safeShardReason) }),
+  };
+}
 
 // Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
-const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone", "_parent_join"]);
+const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone", "_parent_join", "_data_stream_timestamp", "_feature"]);
 
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
@@ -242,7 +255,16 @@ export class OpenSearchClient {
     const { value } = await this.request<Omit<CountResult, "partial">>(`${encodeURIComponent(index)}/_count${query}`, [], options.query === undefined ? undefined : { query: options.query });
     if (!Number.isSafeInteger(value?.count) || value.count < 0 || !Number.isSafeInteger(value._shards?.total) || !Number.isSafeInteger(value._shards?.failed))
       throw new CliError("OpenSearch returned incomplete count metadata.", { code: "opensearch.invalidResponse" });
-    return { ...value, partial: { failedShards: value._shards.failed, totalShards: value._shards.total, failures: value._shards.failures ?? [] } };
+    const failures = (value._shards.failures ?? []).map(failure => ({
+      ...(failure.shard === undefined ? {} : { shard: failure.shard }),
+      ...(failure.index === undefined ? {} : { index: failure.index }),
+      ...(failure.node === undefined ? {} : { node: failure.node }),
+      ...(failure.reason === undefined ? {} : { reason: safeShardReason(failure.reason) }),
+    }));
+    const shards = { total: value._shards.total, successful: value._shards.successful, failed: value._shards.failed,
+      ...(value._shards.skipped === undefined ? {} : { skipped: value._shards.skipped }),
+      ...(value._shards.failures === undefined ? {} : { failures }) };
+    return { count: value.count, _shards: shards, partial: { failedShards: shards.failed, totalShards: shards.total, failures } };
   }
 }
 

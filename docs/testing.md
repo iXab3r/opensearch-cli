@@ -73,3 +73,8 @@ The source-derived join fixture covers generated field membership via `include_u
 and the reserved `_parent_join` marker. The mappings-section fixture rejects the unsupported
 `flat_settings` parameter, matching the 2.19/3.2 REST handler. Strict human count diagnostics
 retain failed/total shards and first failure reasons through Core's cause rendering.
+The partial-count regression also injects synthetic credential patterns in nested cause text and
+checks ordinary/strict human, JSON, RPC and execute results. The client projects supported shard
+identity/cause fields and applies Core's diagnostic redaction before constructing both failure copies.
+Metadata fixtures include built-in `_data_stream_timestamp` and bundled mapper-extras `_feature`,
+based on the 2.19/3.2 mapper registrations, while preserving an ordinary `_custom` user field.

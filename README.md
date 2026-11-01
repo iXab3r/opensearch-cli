@@ -83,10 +83,12 @@ ordinary underscore-prefixed user fields stay visible.
 Query files contain the Query DSL **query object**, for example `{"term":{"status":500}}`, rather
 than a full search body. Relative paths resolve from the command's working directory. `-` reads
 fresh CLI stdin; JSON-RPC callers use a file because stdin carries the RPC protocol. Choose either
-`--q` or `--query-file`. Count returns numeric `count`, original `_shards`, and
+`--q` or `--query-file`. Count returns numeric `count`, normalized `_shards` statistics, and
 `partial: {failedShards, totalShards, failures}`. Shard failures warn human callers on stderr;
 `--fail-on-partial` exits with `search.partial` and retains the result on stdout/RPC error result.
 All these commands are ReadOnly and use the selected profile's server permissions.
+Shard failure details retain index, shard, node and type/reason/cause chains. Diagnostic text
+uses Core's credential redaction before the domain result reaches any output or caller.
 
 ## Agreed direction
 
