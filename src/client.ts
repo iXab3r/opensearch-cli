@@ -181,8 +181,8 @@ export class OpenSearchClient {
 
   async index(index: string, section?: IndexSection): Promise<IndexInspection | IndexSettings | Record<string, unknown>> {
     const path = encodeURIComponent(index) + (section === "settings" ? "/_settings" : section === "mappings" ? "/_mapping" : "");
-    let value: Record<string, { settings?: { index?: Record<string, string> }; mappings?: Record<string, unknown>; aliases?: Record<string, unknown> }>;
-    try { ({ value } = await this.request<typeof value>(path + "?flat_settings=false")); }
+    let value: Record<string, { settings?: { index?: Record<string, string> }; defaults?: { index?: Record<string, string> }; mappings?: Record<string, unknown>; aliases?: Record<string, unknown> }>;
+    try { ({ value } = await this.request<typeof value>(path + "?flat_settings=false" + (section === "mappings" ? "" : "&include_defaults=true"))); }
     catch (cause) {
       if (cause instanceof HttpError && cause.status === 404)
         throw new CliError("The index was not found.", { code: "index.notFound", cause, next: [["indices", "list"]] });
@@ -194,7 +194,7 @@ export class OpenSearchClient {
     const item = value[name]!;
     if (section === "mappings") return item.mappings ?? {};
     if (section === "aliases") return item.aliases ?? {};
-    const wire = item.settings?.index ?? {};
+    const wire = { ...item.defaults?.index, ...item.settings?.index };
     const settings: IndexSettings = {
       primaries: catCount(wire.number_of_shards ?? null), replicas: catCount(wire.number_of_replicas ?? null),
       refreshInterval: wire.refresh_interval ?? null, uuid: wire.uuid ?? null,
