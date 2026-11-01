@@ -13,6 +13,7 @@ public sealed class VerifyTask : AsyncFrostingTask<BuildContext>
         Console.WriteLine(await context.Run("npm", "test"));
         Console.WriteLine(await context.Run("npm", "--prefix", "tools/api-inventory", "test"));
         Console.WriteLine(await context.Run("npm", "run", "test:package"));
+        Console.WriteLine(await context.Run("node", "--test", "scripts/test-release.mjs"));
     }
 }
 
@@ -38,11 +39,11 @@ public sealed class CheckReleaseTask : AsyncFrostingTask<BuildContext>
     public override async Task RunAsync(BuildContext context)
     {
         context.CheckVersions();
+        var revision = Environment.GetEnvironmentVariable("RELEASE_REVISION") ?? "";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(revision, "^[0-9a-f]{40}$") || revision != await context.Run("git", "rev-parse", "HEAD"))
+            throw new CakeException("RELEASE_REVISION must equal the full checkout SHA.");
         if (context.DryRun) return;
         if ((await context.Run("git", "status", "--porcelain")).Length > 0) throw new CakeException("A live release requires a clean working tree.");
-        await context.Run("git", "fetch", "--quiet", "origin", "main");
-        if (await context.Run("git", "rev-parse", "HEAD") != await context.Run("git", "rev-parse", "FETCH_HEAD"))
-            throw new CakeException("A live release requires the current origin/main tip.");
     }
 }
 
@@ -65,5 +66,6 @@ public sealed class PackTask : AsyncFrostingTask<BuildContext>
         };
         File.WriteAllText(Path.Combine(context.ReleaseDirectory, "release-manifest.json"),
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        Console.WriteLine(await context.Run("npm", "run", "test:package", "--", "--tarball", Path.Combine(context.ReleaseDirectory, manifest.file!)));
     }
 }
