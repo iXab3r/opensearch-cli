@@ -97,21 +97,30 @@ async function upsert(marker, title, body, labels) {
     JSON.stringify({ title, body, labels: merged })))) ?? found;
 }
 
+// Project membership is read once, so an interrupted run's issues are added on the next run.
+const inProject = new Set(values.project
+  ? JSON.parse(gh(["project", "item-list", values.project, "--owner", values.owner, "--limit", "5000", "--format", "json"]))
+    .items.map((item) => item.content?.url).filter(Boolean)
+  : []);
+
 async function addToProject(issue) {
-  if (!values.project || !issue) return;
+  if (!values.project || !issue?.html_url || inProject.has(issue.html_url)) return;
+  inProject.add(issue.html_url);
   await write(`project add #${issue.number}`, () => gh(["project", "item-add", values.project, "--owner", values.owner, "--url", issue.html_url]));
 }
 
 let created = 0;
 for (const group of groups) {
   const root = await upsert(groupMarker(group), groupTitle(group), groupBody(group, inventory), groupLabels(group));
-  if (!existing.has(groupMarker(group))) { created++; await addToProject(root); }
+  if (!existing.has(groupMarker(group))) created++;
+  await addToProject(root);
   const linked = root?.number ? new Set(paginate(`repos/${repo}/issues/${root.number}/sub_issues?per_page=100`).map((i) => i.id)) : new Set();
   for (const operation of group.operations) {
     const marker = operationMarker(operation);
     const issue = await upsert(marker, operationTitle(operation), operationBody(group, operation, inventory),
       operationLabels(group, operation, inventory));
-    if (!existing.has(marker)) { created++; await addToProject(issue); }
+    if (!existing.has(marker)) created++;
+    await addToProject(issue);
     if (root?.number && issue?.id && !linked.has(issue.id)) {
       await write(`link #${issue.number} under #${root.number}`, () =>
         api([`repos/${repo}/issues/${root.number}/sub_issues`, "--method", "POST", "-F", `sub_issue_id=${issue.id}`]));
