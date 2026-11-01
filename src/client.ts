@@ -76,7 +76,7 @@ function safeShardReason(reason: ShardFailureReason): ShardFailureReason {
 }
 
 // Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
-const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_type", "_all", "_doc_count", "_nested_path", "_tombstone", "_parent_join", "_data_stream_timestamp", "_feature"]);
+const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_doc_count", "_nested_path", "_tombstone", "_parent_join", "_data_stream_timestamp", "_feature"]);
 
 /** Invocation-owned transport; paths and status semantics belong to OpenSearch. */
 export class OpenSearchClient {
@@ -233,15 +233,23 @@ export class OpenSearchClient {
       }
     };
     for (const [index, mapping] of Object.entries(mappings)) walk(mapping.mappings.properties ?? {}, "", index);
+    const declared = new Set(grouped.keys());
     for (const [name, caps] of Object.entries(capabilities.fields)) {
       const mapped = grouped.get(name);
       const types = Object.keys(caps).filter(type => type !== "unmapped");
       const allMapped = mapped ? [...new Set([...mapped.values()].flatMap(indices => [...indices]))] : capabilities.indices;
-      grouped.set(name, new Map(types.map(type => [type, new Set(caps[type]!.indices ?? (types.length === 1 ? allMapped : [...mapped?.get(type) ?? []]))])));
+      const merged = new Map(types.map(type => [type, new Set(caps[type]!.indices ?? (types.length === 1 ? allMapped : [...mapped?.get(type) ?? []]))]));
+      // Capabilities discover object parents from indexed children; disabled/empty objects need mapping evidence.
+      for (const [type, indices] of mapped ?? []) if (type === "object" || type === "nested") {
+        const members = merged.get(type) ?? new Set<string>();
+        for (const index of indices) members.add(index);
+        merged.set(type, members);
+      }
+      grouped.set(name, merged);
     }
     const filter = options.filter === undefined ? undefined : new RegExp("^" + options.filter.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
     return [...grouped].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-      .filter(([name, types]) => (options.includeMeta || !metadataFields.has(name)) && (!options.type || types.has(options.type)) && (!filter || filter.test(name)))
+      .filter(([name, types]) => (options.includeMeta || declared.has(name) || !metadataFields.has(name)) && (!options.type || types.has(options.type)) && (!filter || filter.test(name)))
       .map(([name, groups]) => {
         const types = [...groups.keys()].sort();
         return { name, types, conflict: types.length > 1, indicesByType: Object.fromEntries(types.map(type => [type, [...groups.get(type)!].sort()])) };

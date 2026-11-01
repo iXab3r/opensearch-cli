@@ -78,3 +78,6 @@ checks ordinary/strict human, JSON, RPC and execute results. The client projects
 identity/cause fields and applies Core's diagnostic redaction before constructing both failure copies.
 Metadata fixtures include built-in `_data_stream_timestamp` and bundled mapper-extras `_feature`,
 based on the 2.19/3.2 mapper registrations, while preserving an ordinary `_custom` user field.
+Field discovery retains mapping-only object/nested types when capabilities omit childless objects;
+resolved alias/scalar capabilities remain authoritative. Explicit user properties, including modern
+keyword fields named `_all` or `_type`, remain visible under the default metadata filter.
