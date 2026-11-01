@@ -103,6 +103,8 @@ uses Core's credential redaction before the domain result reaches any output or 
 - **Standalone process, no IPC.** Calls are cheap and the CLI keeps no state between invocations.
 - **Build and release run on TeamCity**, not GitHub Actions.
 
+Maintainers: follow the [staged release flow](docs/release.md).
+
 ## Non-goals
 
 - A UI, an MCP server or a hosted platform.

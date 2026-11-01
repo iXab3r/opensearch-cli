@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join, relative } from "node:path";
+import { delimiter, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const npmCli = process.env.npm_execpath;
 assert.ok(npmCli, "Run through npm run test:package or test:registry.");
-const version = process.argv[2];
+const tarball = process.argv[2] === "--tarball" ? process.argv[3] : undefined;
+const version = tarball === undefined ? process.argv[2] : undefined;
+assert.ok(tarball === undefined || isAbsolute(tarball), "Pass an absolute tarball path.");
 assert.ok(version === undefined || /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version), "Pass a registry version.");
 const temp = await realpath(await mkdtemp(join(tmpdir(), "opensearch-package-")));
 const prefix = join(temp, "prefix");
@@ -39,8 +41,8 @@ function command(argv, input) {
 try {
   await Promise.all([mkdir(working), writeFile(join(temp, "npmrc"), ""), writeFile(join(temp, "global-npmrc"), "")]);
   const metadata = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-  let source = `${metadata.name}@${version}`;
-  if (version === undefined) {
+  let source = tarball ?? `${metadata.name}@${version}`;
+  if (version === undefined && tarball === undefined) {
     const [packed] = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", temp], { cwd: root }));
     const files = new Set(packed.files.map(file => file.path));
     for (const path of ["package.json", "LICENSE", "README.md", "dist/src/bin.js", "dist/src/index.js", "dist/src/index.d.ts"]) assert.ok(files.has(path), `Missing ${path}`);

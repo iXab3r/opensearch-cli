@@ -19,19 +19,33 @@ public sealed class BuildContext(ICakeContext context) : FrostingContext(context
             : throw new CakeException("Pass --release-version <major.minor.patch>.");
     }
 
-    public async Task<string> Run(string tool, params string[] arguments)
+    public Task<string> Run(string tool, params string[] arguments) => RunAt(Root, tool, arguments);
+
+    public async Task<string> RunAt(string directory, string tool, string[] arguments, IReadOnlyDictionary<string, string>? credentials = null)
     {
         var executable = !OperatingSystem.IsWindows() ? tool : (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator).Where(path => path.Trim().Length > 0)
             .SelectMany(path => new[] { ".cmd", ".exe" }.Select(ext => Path.Combine(path.Trim(), tool + ext)))
             .FirstOrDefault(File.Exists) ?? tool;
-        var start = new ProcessStartInfo(executable) { WorkingDirectory = Root, UseShellExecute = false, RedirectStandardOutput = true };
+        var start = new ProcessStartInfo(executable) { WorkingDirectory = directory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var key in start.Environment.Keys.Where(key => key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase) || key.StartsWith("NPM_CONFIG_", StringComparison.OrdinalIgnoreCase)).ToArray())
+            start.Environment.Remove(key);
+        if (credentials is not null)
+            foreach (var pair in credentials) start.Environment[pair.Key] = pair.Value;
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         Console.WriteLine($"> {tool} {string.Join(' ', arguments)}");
         using var process = Process.Start(start) ?? throw new CakeException($"Could not start {tool}.");
-        var output = await process.StandardOutput.ReadToEndAsync();
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        var output = await stdout;
+        var diagnostic = await stderr;
         await process.WaitForExitAsync();
-        if (process.ExitCode != 0) throw new CakeException($"{tool} exited with code {process.ExitCode}.");
+        if (process.ExitCode != 0)
+        {
+            // npm may include credentials or registry responses in its diagnostics.
+            var code = Regex.Match(diagnostic + output, @"\bE(?:403|404)\b").Value;
+            throw new CakeException($"{tool} exited with code {process.ExitCode}{(code.Length > 0 ? $" ({code}); ask the owner before retrying" : "")}.");
+        }
         return output.Trim();
     }
 
