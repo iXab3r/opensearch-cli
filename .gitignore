@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+*.log
+/*.tgz
+.DS_Store
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+
+# Local CLI state used during development.
+.cli-factory/
+output/
+
+# Local agent coordination notes; never committed.
+/.workspace/
+
+# Release driver build output.
+build/bin/
+build/obj/
