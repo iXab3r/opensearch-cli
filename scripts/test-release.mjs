@@ -90,6 +90,13 @@ else if (tool === 'curl') {
     // Restore only from the already-cached Cake packages, without network sources.
     run("dotnet", ["build", "build", "--source", join(temp, "nuget"), "--nologo"]);
     const driver = [join(fixture, "build", "bin", "Debug", "net10.0", "Build.dll")];
+    // WHAT: Regression: Stage --dry-run skipped cleanliness checks but still created a stage.
+    // HOW: Run that exact Cake entrypoint and require rejection before npm is invoked.
+    // Independent review approved this single safety regression's maintenance cost.
+    const dryStage = spawnSync("dotnet", [...driver, "--target", "Stage", "--exclusive", "--release-version", "0.1.0", "--dry-run"],
+      { cwd: fixture, env, encoding: "utf8", timeout: 30_000, windowsHide: true });
+    assert.notEqual(dryStage.status, 0, "Stage --dry-run must not create a live stage.");
+    await assert.rejects(readFile(log));
     for (const [target, status] of [["DryRun", "dry-run-verified"], ["Stage", "awaiting-2fa-approval"], ["VerifyRegistry", "published-verified"]]) {
       run("dotnet", [...driver, "--target", target, "--exclusive", "--release-version", "0.1.0", ...(target === "DryRun" ? ["--dry-run"] : [])]);
       const receipt = JSON.parse(await readFile(join(fixture, "output", "release", "release.json"), "utf8"));

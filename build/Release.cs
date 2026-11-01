@@ -17,6 +17,7 @@ public sealed class ReleaseFlow(BuildContext context) : IDisposable
 
     public async Task Execute(string mode)
     {
+        if (context.DryRun && mode != "dry-run") throw new CakeException("Use target DryRun with --dry-run.");
         await new CheckReleaseTask().RunAsync(context);
         manifest = JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(Path.Combine(context.ReleaseDirectory, "release-manifest.json")))!;
         if (manifest.name != "@eyeauras/opensearch-cli" || manifest.version != context.RequireVersion() || manifest.commit != Environment.GetEnvironmentVariable("RELEASE_REVISION")
