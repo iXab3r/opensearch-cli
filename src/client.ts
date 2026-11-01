@@ -64,6 +64,20 @@ export interface ShardFailure { shard?: number; index?: string; node?: string; r
 /** Supported OpenSearch cause structure; diagnostic strings use Core's redaction policy. */
 export interface ShardFailureReason { type?: string; reason?: string; caused_by?: ShardFailureReason; root_cause?: ShardFailureReason[]; suppressed?: ShardFailureReason[] }
 
+/** A search hit retains OpenSearch metadata and user-selected document contents unchanged. */
+export interface SearchHit { _index: string; _id: string; _score?: number | null; _source?: unknown; sort?: unknown[]; [key: string]: unknown }
+/** Search responses retain wire data plus explicit completeness signals for callers. */
+interface SearchResponse {
+  took: number; timed_out: boolean; _shards: CountResult["_shards"];
+  hits: { total?: {value: number; relation: "eq" | "gte"}; max_score?: number | null; hits: SearchHit[] };
+  aggregations?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+/** Completeness signals accompany the unchanged search response fields. */
+export interface SearchResult extends SearchResponse {
+  partial: { timedOut: boolean; failedShards: number; totalShards: number; failures: ShardFailure[]; totalLowerBound: boolean };
+}
+
 function safeShardReason(reason: ShardFailureReason): ShardFailureReason {
   const safe = diagnosticCause(Object.assign(new Error(reason.reason ?? ""), { name: reason.type ?? "Error" }));
   return {
@@ -82,13 +96,21 @@ const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignore
 export class OpenSearchClient {
   constructor(private readonly connection: { url: string; fetch: typeof fetch; signal: AbortSignal; authorization?: string }) {}
 
-  private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown): Promise<{ status: number; value: T }> {
+  private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown, queryErrors = false): Promise<{ status: number; value: T }> {
     const { url, fetch, signal, authorization } = this.connection;
     const response = await fetchWithRedirects(fetch, new URL(path, url), {
       signal, ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
       headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }), ...(authorization ? { authorization } : {}) },
     });
     if (!response.ok && !accepted.includes(response.status)) {
+      if (queryErrors && response.status === 400) {
+        const bytes = await readResponseBody(response, { signal });
+        let error: ShardFailureReason | undefined;
+        try { error = (JSON.parse(new TextDecoder().decode(bytes)) as {error?: ShardFailureReason}).error; } catch { /* Use the status when the server supplied no structured error. */ }
+        const reason = error?.root_cause?.find(cause => ["query_shard_exception", "parse_exception", "parsing_exception"].includes(cause.type ?? "")) ?? error;
+        if (reason && ["query_shard_exception", "parse_exception", "parsing_exception"].includes(reason.type ?? ""))
+          throw new CliError("OpenSearch could not parse the query.", {code:"query.invalid", cause:diagnosticCause(new Error(reason.reason ?? "Invalid query."))});
+      }
       await response.body?.cancel();
       throw new HttpError(response.status, "OpenSearch rejected the request.");
     }
@@ -254,6 +276,15 @@ export class OpenSearchClient {
         const types = [...groups.keys()].sort();
         return { name, types, conflict: types.length > 1, indicesByType: Object.fromEntries(types.map(type => [type, [...groups.get(type)!].sort()])) };
       });
+  }
+
+  async search(index: string, body: Record<string, unknown>): Promise<SearchResult> {
+    const {value} = await this.request<SearchResponse>(`${encodeURIComponent(index)}/_search`, [], body, true);
+    if (typeof value.took !== "number" || typeof value.timed_out !== "boolean" || !Array.isArray(value.hits?.hits) || !Number.isSafeInteger(value._shards?.failed))
+      throw new CliError("OpenSearch returned incomplete search metadata.", {code:"opensearch.invalidResponse"});
+    const failures = (value._shards.failures ?? []).map(failure => ({...failure, ...(failure.reason === undefined ? {} : {reason:safeShardReason(failure.reason)})}));
+    return {...value, _shards:{...value._shards, ...(value._shards.failures === undefined ? {} : {failures})},
+      partial:{timedOut:value.timed_out, failedShards:value._shards.failed, totalShards:value._shards.total, failures, totalLowerBound:value.hits.total?.relation === "gte"}} as SearchResult;
   }
 
   async count(index: string, options: { q?: string; query?: Record<string, unknown> }): Promise<CountResult> {

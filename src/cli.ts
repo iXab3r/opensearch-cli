@@ -3,6 +3,7 @@ import { openSearchAuth } from "./auth.js";
 import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, type CountResult, type DataStreamSummary, type FieldSummary, type IndexSection, type IndexSummary } from "./client.js";
 import { readQuery } from "./query.js";
 import { version } from "./version.js";
+import { searchCommand } from "./search.js";
 
 export function createDefinition(): CliDefinition {
   return {
@@ -21,7 +22,7 @@ export function createDefinition(): CliDefinition {
       ],
     },
     auth: openSearchAuth(),
-    commands: [command("cluster", "Inspect the OpenSearch cluster", [
+    commands: [searchCommand(), command("cluster", "Inspect the OpenSearch cluster", [
       command("info", "Show cluster version and identity", async (_, context) => {
         const info = await (await clientFor(context)).info();
         if (info.version.distribution !== "opensearch" || !/^[23]\./.test(info.version.number))
