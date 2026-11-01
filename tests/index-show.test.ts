@@ -8,6 +8,21 @@ const mappings = { dynamic: "strict", properties: { user: { properties: { name: 
 const aliases = { "sample-current": { is_write_index: true, filter: { term: { status: "active" } } } };
 const settings = { index: { number_of_shards: "2", number_of_replicas: "1", refresh_interval: "5s", creation_date: "1735689600000", uuid: "synthetic-index-uuid" } };
 const expectedSettings = { primaries: 2, replicas: 1, refreshInterval: "5s", createdAt: "2025-01-01T00:00:00.000Z", uuid: "synthetic-index-uuid" };
+test("M2 indices show includes server defaults for an implicit refresh interval", async t => {
+  const { fixture, server, app } = await setupExplore(t);
+  const { refresh_interval, ...explicit } = settings.index;
+  server.use(http.get(origin + "/search/sample-a", ({ request }) => {
+    assert.equal(new URL(request.url).searchParams.get("include_defaults"), "true");
+    return HttpResponse.json({ "sample-a": { settings: { index: explicit }, defaults: { index: { refresh_interval: "1s" } }, aliases, mappings } });
+  }), http.get(origin + "/search/sample-a/_settings", ({ request }) => {
+    assert.equal(new URL(request.url).searchParams.get("include_defaults"), "true");
+    return HttpResponse.json({ "sample-a": { settings: { index: explicit }, defaults: { index: { refresh_interval: "1s" } } } });
+  }));
+  const full = await fixture.json(app, ["indices", "show", "sample-a"]) as { settings: { refreshInterval: string } };
+  assert.equal(full.settings.refreshInterval, "1s");
+  const section = await fixture.json(app, ["indices", "show", "sample-a", "--section", "settings"]) as { refreshInterval: string };
+  assert.equal(section.refreshInterval, "1s");
+});
 test("M2 indices show returns settings, aliases and complete mappings in JSON and RPC", async t => {
   const { fixture, server, app } = await setupExplore(t);
   server.use(http.get(origin + "/search/sample-a", () => HttpResponse.json({ "sample-a": { aliases, settings, mappings } })));
