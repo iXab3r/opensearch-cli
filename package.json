@@ -42,7 +42,7 @@
     "proof": "npm run build && node scripts/proof.mjs"
   },
   "dependencies": {
-    "@eyeauras/cli-factory": "0.5.3"
+    "@eyeauras/cli-factory": "0.5.4"
   },
   "devDependencies": {
     "typescript": "7.0.2",

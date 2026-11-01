@@ -97,6 +97,8 @@ uses Core's credential redaction before the domain result reaches any output or 
 opensearch-cli search sample-* --q "category:example" --fields title,category --sort rank:desc --size 20
 opensearch-cli search sample-a --body-file request.json
 opensearch-cli search sample-a --body-file -
+opensearch-cli search sample-* --all --max-results 50000 --json > results.ndjson
+opensearch-cli search sample-a --all --max-results 1000 --tie-breaker unique_key
 opensearch-cli docs get sample-a doc-1
 opensearch-cli docs get sample-a doc-1 doc-2
 opensearch-cli docs exists sample-a doc-1
@@ -104,7 +106,7 @@ opensearch-cli aggregate terms sample-a --field category --size 10
 opensearch-cli aggregate histogram sample-a --field created --interval 1h
 ```
 
-Search returns one page (10 hits by default). `--fields` selects `_source` fields; `--sort` takes
+Search returns one page by default (10 hits). `--fields` selects `_source` fields; `--sort` takes
 comma-separated fields with optional `:asc`/`:desc`. `--body-file` accepts a complete search body
 unchanged; `-` reads fresh stdin. RPC callers use a file. Choose either `--q` or a body.
 Explicit size/source/sort flags with a body are sent as search URL parameters.
@@ -120,7 +122,29 @@ and return an array with each item's found/error state; a single missing ID fail
 `document.notFound`. `docs exists` returns a boolean. Aggregation helpers are size-zero searches:
 terms shows bucket counts and error bounds; histogram uses a fixed interval and ISO bucket dates.
 Use a full search body for stats, percentiles, calendar intervals or nested aggregations.
-All commands are ReadOnly. PIT paging is tracked in [Story 12](https://github.com/iXab3r/opensearch-cli/issues/37).
+All commands are ReadOnly.
+
+`--all` opens a point in time (PIT), pages with `search_after` and deletes the PIT when finished,
+including after failure or cancellation. It requires an explicit positive `--max-results` budget.
+`--size` sets the page size (default 1,000); each request stays within the remaining budget plus
+one lookahead hit. Overflow fails with `search.budgetExceeded`: `retrievedCount` counts yielded
+hits and `observedCount` includes the lookahead. A lower-bound total does not decide overflow or
+completion. First Ctrl+C cancels the command and allows PIT cleanup; cleanup has a separate 5s deadline.
+Failed cleanup is reported, retaining any original failure.
+
+OpenSearch 3.3+ adds an automatic `_index`/`_shard_doc` tie-breaker, including for multi-index
+selections. On 2.4–3.2, pass `--tie-breaker` naming a present, sortable doc-values field whose values
+you guarantee are unique across the entire selection. PIT is unavailable before 2.4; unavailable
+PITs fail clearly. No index settings change and no unstable paging fallback is used.
+
+For `--all`, ordinary `--json` emits one unchanged hit per NDJSON line. Human output, programmatic
+execute and JSON-RPC receive an array, buffered within the budget; RPC still returns one frame.
+On failure, emitted hit lines remain, with the error and count metadata on stderr. Repeated partial
+page warnings print once per distinct warning on stderr, including in JSON/RPC; warning lines may
+precede the final JSON error envelope. `--fail-on-partial` fails before yielding the incomplete page
+and retains its partial/count metadata. A nonzero exit means the hit stream did not complete.
+`--all` accepts query/source/sort input from a body, but owns paging keys and returns hits only;
+use one-page search for `pit`, `from`, `search_after` or aggregation bodies.
 
 ## Agreed direction
 

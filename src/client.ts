@@ -301,14 +301,36 @@ export class OpenSearchClient {
     return (await this.request(`${encodeURIComponent(index)}/_doc/${encodeURIComponent(id)}`,[404],undefined,false,"HEAD")).status === 200;
   }
 
-  async search(index: string, body: Record<string, unknown>, parameters: Record<string,string> = {}): Promise<SearchResult> {
+  async search(index: string | undefined, body: Record<string, unknown>, parameters: Record<string,string> = {}): Promise<SearchResult> {
     const query = new URLSearchParams(parameters);
-    const {value} = await this.request<SearchResponse>(`${encodeURIComponent(index)}/_search${query.size ? "?"+query : ""}`, [], body, true);
+    const {value} = await this.request<SearchResponse>(`${index === undefined ? "" : encodeURIComponent(index)+"/"}_search${query.size ? "?"+query : ""}`, [], body, true);
     if (typeof value.took !== "number" || typeof value.timed_out !== "boolean" || !Array.isArray(value.hits?.hits) || !Number.isSafeInteger(value._shards?.failed))
       throw new CliError("OpenSearch returned incomplete search metadata.", {code:"opensearch.invalidResponse"});
     const failures = (value._shards.failures ?? []).map(failure => ({...failure, ...(failure.reason === undefined ? {} : {reason:safeShardReason(failure.reason)})}));
     return {...value, _shards:{...value._shards, ...(value._shards.failures === undefined ? {} : {failures})},
       partial:{timedOut:value.timed_out, terminatedEarly:value.terminated_early === true, failedShards:value._shards.failed, totalShards:value._shards.total, failures, totalLowerBound:value.hits.total?.relation === "gte"}} as SearchResult;
+  }
+
+  /** Opens a complete snapshot for one selection; the caller owns deletion and keep-alive renewal. */
+  async createPit(index: string): Promise<string> {
+    let value: { pit_id?: string };
+    try {
+      ({ value } = await this.request<{pit_id?: string}>(`${encodeURIComponent(index)}/_search/point_in_time?keep_alive=1m&allow_partial_pit_creation=false`, [], undefined, false, "POST"));
+    } catch (cause) {
+      if (cause instanceof HttpError && [400, 404, 405, 501].includes(cause.status))
+        throw new CliError("OpenSearch could not open a point in time for this selection.", { code: "search.pitUnavailable", cause });
+      throw cause;
+    }
+    if (typeof value?.pit_id !== "string" || !value.pit_id)
+      throw new CliError("OpenSearch returned no point-in-time ID.", { code: "opensearch.invalidResponse" });
+    return value.pit_id;
+  }
+
+  /** Deletes only the invocation-owned snapshot and verifies the server acknowledged deletion. */
+  async deletePit(id: string): Promise<void> {
+    const { value } = await this.request<{ pits?: { pit_id: string; successful: boolean }[] }>("_search/point_in_time", [], { pit_id: [id] }, false, "DELETE");
+    if (!value?.pits?.some(pit => pit.pit_id === id && pit.successful === true))
+      throw new CliError("Point-in-time cleanup failed.", { code: "search.pitCleanupFailed" });
   }
 
   async count(index: string, options: { q?: string; query?: Record<string, unknown> }): Promise<CountResult> {

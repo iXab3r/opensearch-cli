@@ -1,6 +1,7 @@
 import {CliError, command, formatHuman, integerParser, recordView, type CommandContext, type CommandDefinition, type HumanView} from "@eyeauras/cli-factory";
-import {clientFor, type SearchResult} from "./client.js";
+import {clientFor, type SearchResult, type SearchHit} from "./client.js";
 import {readQuery} from "./query.js";
+import {searchAll, type PagingFailure} from "./search-all.js";
 
 /** Search and aggregation commands share the same completeness policy on every surface. */
 export function checkSearchCompleteness(value: SearchResult, context: CommandContext, strict: boolean): SearchResult {
@@ -21,12 +22,23 @@ export function checkSearchCompleteness(value: SearchResult, context: CommandCon
 
 /** Core formats the records and bucket table; the product selects OpenSearch fields. */
 export function searchView(dateHistogram = false): HumanView {
-  return recordView<SearchResult>({fields:[
-    {label:"Total",value:value=>value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
-    {label:"Took (ms)",value:value=>value.took},
+  type Presentation = SearchResult | SearchHit[] | PagingFailure;
+  const isPage = (value: Presentation): value is SearchResult => !Array.isArray(value) && "hits" in value;
+  const isFailure = (value: Presentation): value is PagingFailure => !Array.isArray(value) && !isPage(value) && "retrievedCount" in value;
+  return recordView<Presentation>({fields:[
+    {label:"Total",value:value=>isPage(value) && value.hits.total ? `${value.hits.total.relation === "gte" ? "≥ " : ""}${value.hits.total.value}` : undefined},
+    {label:"Took (ms)",value:value=>isPage(value) ? value.took : undefined},
+    {label:"Retrieved",value:value=>isFailure(value) ? value.retrievedCount : undefined},
+    {label:"Observed",value:value=>isFailure(value) ? value.observedCount : undefined},
+    {label:"Budget",value:value=>isFailure(value) ? value.maxResults : undefined},
+    {label:"Timed out",value:value=>isFailure(value) ? value.partial?.timedOut : undefined},
+    {label:"Early termination",value:value=>isFailure(value) ? value.partial?.terminatedEarly : undefined},
+    {label:"Failed shards",value:value=>isFailure(value) ? value.partial?.failedShards : undefined},
+    {label:"Lower-bound total",value:value=>isFailure(value) ? value.partial?.totalLowerBound : undefined},
+    {label:"PIT cleanup failed",value:value=>isFailure(value) ? value.cleanupFailed : undefined},
   ],sections:[
-    {title:()=>"Hits",lines:value=>value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : value.aggregations ? undefined : ["No matches."]},
-    {title:()=>"Aggregations",lines:value=>value.aggregations ? Object.entries(value.aggregations).flatMap(([name,aggregation])=>{
+    {title:()=>"Hits",lines:value=>Array.isArray(value) ? (value.length ? value.map(hit=>formatHuman(hit)) : ["No matches."]) : isPage(value) ? (value.hits.hits.length ? value.hits.hits.map(hit=>formatHuman(hit)) : value.aggregations ? undefined : ["No matches."]) : undefined},
+    {title:()=>"Aggregations",lines:value=>isPage(value) && value.aggregations ? Object.entries(value.aggregations).flatMap(([name,aggregation])=>{
       if (!aggregation || typeof aggregation !== "object" || Array.isArray(aggregation)) return [name,formatHuman(aggregation)];
       const {buckets,...metadata}=aggregation as Record<string,unknown>;
       if (!Array.isArray(buckets)) return [name,formatHuman(aggregation)];
@@ -36,12 +48,28 @@ export function searchView(dateHistogram = false): HumanView {
   ]});
 }
 
-/** One page uses the standard search API; Core renders every output format. */
+function sortFields(value: unknown): unknown[] {
+  return String(value).split(",").map(field => {
+    const match = /^(.*):(asc|desc)$/.exec(field);
+    return match ? {[match[1]!]:match[2]} : field;
+  });
+}
+
+/** Bounded pages and finite PIT traversals share one command and Core's output contract. */
 export function searchCommand(): CommandDefinition {
   return command("search <index>", "Search documents and inspect matching hits", async ({args,options}, context) => {
+    if (options.all && options.maxResults === undefined)
+      throw new CliError("Set --max-results when using --all.", {code:"usage"});
+    if (!options.all && (options.maxResults !== undefined || options.tieBreaker !== undefined))
+      throw new CliError("Use --all with --max-results or --tie-breaker.", {code:"usage"});
     if (options.bodyFile !== undefined) {
       if (options.q !== undefined) throw new CliError("Choose --q or --body-file.", {code:"usage"});
       const body = await readQuery(String(options.bodyFile),context);
+      if (options.all) return searchAll(args.index, {...body,
+        ...(options.size === undefined ? {} : {size:options.size}),
+        ...(options.fields === undefined ? {} : {_source:String(options.fields).split(",").map(field=>field.trim())}),
+        ...(options.sort === undefined ? {} : {sort:sortFields(options.sort)}),
+      }, options.maxResults as number, options.tieBreaker as string | undefined, options.failOnPartial === true, context, checkSearchCompleteness);
       const parameters: Record<string,string> = {};
       if (options.size !== undefined) parameters.size = String(options.size);
       if (options.fields !== undefined) parameters._source = String(options.fields);
@@ -51,11 +79,9 @@ export function searchCommand(): CommandDefinition {
     const body: Record<string,unknown> = {};
     if (options.q !== undefined) body.query = {query_string:{query:options.q}};
     if (options.fields !== undefined) body._source = String(options.fields).split(",").map(field=>field.trim());
-    if (options.sort !== undefined) body.sort = String(options.sort).split(",").map(field=> {
-      const match = /^(.*):(asc|desc)$/.exec(field);
-      return match ? {[match[1]!]:match[2]} : field;
-    });
-    body.size = options.size ?? 10;
+    if (options.sort !== undefined) body.sort = sortFields(options.sort);
+    body.size = options.size ?? (options.all ? 1000 : 10);
+    if (options.all) return searchAll(args.index, body, options.maxResults as number, options.tieBreaker as string | undefined, options.failOnPartial === true, context, checkSearchCompleteness);
     return checkSearchCompleteness(await (await clientFor(context)).search(args.index,body),context,options.failOnPartial === true);
   }, {permission:"ReadOnly",options:[
     {flags:"--q <query>",description:"Match a Lucene query string"},
@@ -63,7 +89,10 @@ export function searchCommand(): CommandDefinition {
     {flags:"--fail-on-partial",description:"Fail on incomplete results or lower totals"},
     {flags:"--fields <fields>",description:"Select comma-separated source fields"},
     {flags:"--sort <fields>",description:"Sort by comma-separated field:asc or field:desc"},
-    {flags:"--size <count>",description:"Limit hits in this page (default 10)",parse:integerParser({min:0,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Size must be a non-negative integer."})},
+    {flags:"--size <count>",description:"Set page size (default 10; --all 1000)",parse:integerParser({min:0,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Size must be a non-negative integer."})},
+    {flags:"--all",description:"Page through all matching documents"},
+    {flags:"--max-results <count>",description:"Set the total result budget",parse:integerParser({min:1,max:Number.MAX_SAFE_INTEGER,signed:false,errorMessage:"Result budget must be a positive integer."})},
+    {flags:"--tie-breaker <field>",description:"Select a unique doc-values sort field"},
   ],view:searchView()});
 }
 
