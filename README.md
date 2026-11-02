@@ -222,6 +222,9 @@ one. `--create` requires an ID and uses the create-only API. Concurrency flags m
 409 reports `document.conflict`. Index creation checks existence, then applies settings/mappings;
 `--shards` and `--replicas` override those body settings. An unacknowledged mutation fails with its
 observed response because the remote outcome is uncertain.
+Index deletion and alias mutations include the requested index/alias selectors in their results;
+these identify the request, rather than enumerating every index matched by a pattern. Human output
+names the action and those objects. Alias swaps retain both `from` and `to` in JSON/RPC results.
 
 Update gates indexing, update, bulk, index creation, reindex, alias changes and task cancellation.
 Delete gates document/index deletion and delete-by-query. Both categories start disabled and are

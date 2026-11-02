@@ -273,12 +273,27 @@ export function indexWriteCommands(): CommandDefinition[] {
             description: "Allow index patterns and _all",
           },
         ],
+        view: recordView<Record<string, unknown>>({
+          fields: [{ label: "Deleted index", value: (v) => String(v.index) }],
+        }),
       },
     ),
   ];
 }
 
 /** Alias mutations preserve the source precondition inside one server-side transaction. */
+const aliasView = (action: string) =>
+  recordView<Record<string, unknown>>({
+    fields: [
+      { label: action + " alias", value: (v) => String(v.alias) },
+      ...["index", "from", "to"].map((key) => ({
+        label: key[0]!.toUpperCase() + key.slice(1),
+        value: (v: Record<string, unknown>) =>
+          typeof v[key] === "string" ? (v[key] as string) : undefined,
+      })),
+    ],
+  });
+
 export function aliasWriteCommands(): CommandDefinition[] {
   return [
     command(
@@ -305,6 +320,7 @@ export function aliasWriteCommands(): CommandDefinition[] {
             required: true,
           },
         ],
+        view: aliasView("Moved"),
       },
     ),
     command(
@@ -312,7 +328,7 @@ export function aliasWriteCommands(): CommandDefinition[] {
       "Add an alias target",
       async ({ args }, context) =>
         (await clientFor(context)).changeAlias(args.alias, args.index, "add"),
-      { permission: "Update" },
+      { permission: "Update", view: aliasView("Added") },
     ),
     command(
       "remove <alias> <index>",
@@ -323,7 +339,7 @@ export function aliasWriteCommands(): CommandDefinition[] {
           args.index,
           "remove",
         ),
-      { permission: "Update" },
+      { permission: "Update", view: aliasView("Removed") },
     ),
   ];
 }

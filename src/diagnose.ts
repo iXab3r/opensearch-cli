@@ -35,7 +35,11 @@ function observationTimes(value: unknown): unknown {
       Object.entries(value).map(([key, item]) => [
         key,
         typeof item === "number" &&
-        ["timestamp", "start_time_in_millis"].includes(key)
+        [
+          "timestamp",
+          "start_time_in_millis",
+          "cancellation_time_millis",
+        ].includes(key)
           ? new Date(item).toISOString()
           : observationTimes(item),
       ]),

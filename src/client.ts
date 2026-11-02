@@ -471,7 +471,7 @@ export class OpenSearchClient {
   }
 
   async deleteIndex(index:string):Promise<Record<string,unknown>> {
-    return acknowledged((await this.request<Record<string,unknown>>(encodeURIComponent(index),[],undefined,false,"DELETE")).value);
+    return {...acknowledged((await this.request<Record<string,unknown>>(encodeURIComponent(index),[],undefined,false,"DELETE")).value),index};
   }
 
   async writeByQuery(index:string|undefined,body:Record<string,unknown>,wait:boolean):Promise<Record<string,unknown>> {
@@ -493,7 +493,7 @@ export class OpenSearchClient {
         throw new CliError("The alias does not point to the source index.",{code:"alias.sourceMismatch"});
     }
     const actions=operation==="swap"?[{remove:{index,alias,must_exist:true}},{add:{index:destination,alias}}]:operation==="remove"?[{remove:{index,alias,must_exist:true}}]:[{add:{index,alias}}];
-    return acknowledged((await this.request<Record<string,unknown>>("_aliases",[],{actions})).value);
+    return {...acknowledged((await this.request<Record<string,unknown>>("_aliases",[],{actions})).value),alias,...(operation==="swap"?{from:index,to:destination}:{index})};
   }
 
   async bulk(index:string|undefined,body:string):Promise<BulkResponse> {
