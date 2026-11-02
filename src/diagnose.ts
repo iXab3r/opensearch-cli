@@ -50,7 +50,10 @@ export function diagnoseCommands(): CommandDefinition[] {
             },
           ],
           view: recordView<Record<string, unknown>>({
-            fields: [{ label: "Valid", value: (v) => scalar(v.valid) }],
+            fields: [
+              { label: "Valid", value: (v) => scalar(v.valid) },
+              { label: "Error", value: (v) => scalar(v.error) },
+            ],
             sections: [
               {
                 title: () => "Explanations",

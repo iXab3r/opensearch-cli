@@ -353,7 +353,10 @@ export class OpenSearchClient {
   }
 
   async validateQuery(index: string, body: Record<string, unknown>, explain: boolean): Promise<Record<string, unknown>> {
-    return (await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_validate/query?explain=${explain}`, [], body)).value;
+    const parameters=new URLSearchParams({explain:"true",...(explain?{rewrite:"true",all_shards:"true"}:{})});
+    const {value}=await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_validate/query?${parameters}`, [], body);
+    const safeError=(error:unknown):unknown=>typeof error==="string"?diagnosticCause(new Error(error)).message:error && typeof error==="object"?safeShardReason(error as ShardFailureReason):error;
+    return {...value,...(value.error===undefined?{}:{error:safeError(value.error)}),...(Array.isArray(value.explanations)?{explanations:value.explanations.map(explanation=>({...explanation,...(explanation.error===undefined?{}:{error:safeError(explanation.error)})}))}:{})};
   }
 
   async explainQuery(index: string, id: string, body: Record<string,unknown>): Promise<Record<string,unknown>> {
@@ -437,7 +440,8 @@ export class OpenSearchClient {
   }
 
   async writeByQuery(index:string|undefined,body:Record<string,unknown>,wait:boolean):Promise<Record<string,unknown>> {
-    const {value}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true);
+    const {value:response}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true);
+    const value:Record<string,unknown>={...response,...(Array.isArray(response.failures)?{failures:response.failures.map(failure=>({...failure,...(failure.cause===undefined?{}:{cause:safeShardReason(failure.cause)})}))}:{})};
     if(!wait) {
       if(typeof value.task!=="string" || !value.task)throw new CliError("OpenSearch returned no task ID.",{code:"opensearch.invalidResponse"});
       return {...value,next:[["tasks","show",value.task]]};
