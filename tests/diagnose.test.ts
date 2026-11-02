@@ -70,7 +70,7 @@ test("Story17 lists numeric resource observations joined to full node roles",asy
 });
 
 test("Story17 selected node stats preserve numeric per-node metrics on RPC",async t=>{
-  const {fixture,server,app}=await setupExplore(t);const wire={_nodes:{total:1,successful:1,failed:0},nodes:{"node-a":{name:"sample-node",jvm:{mem:{heap_used_percent:12}},fs:{total:{total_in_bytes:5120}},os:{cpu:{percent:5}}}};
+  const {fixture,server,app}=await setupExplore(t);const wire={_nodes:{total:1,successful:1,failed:0},nodes:{"node-a":{name:"sample-node",jvm:{mem:{heap_used_percent:12}},fs:{total:{total_in_bytes:5120}},os:{cpu:{percent:5}}}}};
   server.use(http.get(origin+"/search/_nodes/node-a/stats/jvm,fs,os",()=>HttpResponse.json(wire)));
   const [reply]=await fixture.rpc(app,[["nodes","stats","node-a","--metric","jvm,fs,os"]]) as any[];assert.deepEqual(reply.result,wire);
 });
