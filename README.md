@@ -3,7 +3,7 @@
 A general-purpose command-line client for [OpenSearch](https://opensearch.org/), built on
 [CliFactory](https://github.com/iXab3r/EyeAuras.CliFactory) (`@eyeauras/cli-factory`).
 
-> **M3 development:** search, document reads and aggregations are being added to the source tree.
+> **Source tree:** M1–M3 plus M4 diagnostics and M5 writes.
 > npm `0.1.0` provides M1 Connect and M2 Explore data.
 > Further OpenSearch commands are being delivered in [approved milestones](https://github.com/iXab3r/opensearch-cli/issues/7).
 > Install with `npm install --global @eyeauras/opensearch-cli` (Node.js 22+).
@@ -166,6 +166,75 @@ Maintainers: follow the [staged release flow](docs/release.md).
 - A UI, an MCP server or a hosted platform.
 - Elasticsearch compatibility.
 - Copying CliFactory sources; the framework is consumed as a package.
+
+## Diagnose queries and cluster resources
+
+```text
+opensearch-cli query validate sample-a --body-file query-body.json --explain
+opensearch-cli query explain sample-a doc-1 --body-file query-body.json
+opensearch-cli analyze --analyzer standard 'Quick Brown Fox'
+opensearch-cli analyze --index sample-a --field title 'Quick Brown Fox'
+opensearch-cli nodes list
+opensearch-cli nodes stats node-a --metric jvm,fs,os
+opensearch-cli shards list sample-a --state unassigned
+opensearch-cli shards explain
+opensearch-cli shards explain --index sample-a --shard 0 --primary
+opensearch-cli tasks list --actions '*search*' --detailed
+opensearch-cli tasks show node-a:7
+opensearch-cli tasks cancel node-a:7
+```
+
+Query files contain the native body, for example `{"query":{"match_all":{}}}`.
+Validation returns `valid:false` as a successful observation; explain preserves the score tree.
+Analyzer tokens include positions and offsets. Node lists normalize resource observations to
+numbers (bytes for disk); unavailable observations are `null`. Node stats preserve selected native
+metrics. Allocation without a selection explains OpenSearch's first unassigned shard; no unassigned
+shard returns `{unassigned:false}`. Selected shards default to replica unless `--primary` is supplied.
+Task reads preserve status, completed results and errors; cancelling requires Update and requests
+cancellation without claiming the task has already stopped. All other diagnostics are ReadOnly.
+
+## Write documents and manage indices
+
+```text
+opensearch-cli permissions grant Update --profile dev
+opensearch-cli docs index sample-a doc-1 --body-file document.json --refresh wait_for
+opensearch-cli docs index sample-a doc-2 --create --body-file document.json
+opensearch-cli docs update sample-a doc-1 --body-file update.json --if-seq-no 7 --if-primary-term 2
+opensearch-cli bulk load sample-a --file documents.ndjson --id-field id --batch-size 1000
+opensearch-cli indices create sample-b --body-file index.json --shards 1 --replicas 0
+opensearch-cli reindex --source sample-a --dest sample-b --q 'title:example' --no-wait
+opensearch-cli aliases swap sample-alias --from sample-a --to sample-b
+opensearch-cli aliases add sample-alias sample-b
+opensearch-cli aliases remove sample-alias sample-a
+opensearch-cli permissions grant Delete --profile dev
+opensearch-cli docs delete sample-a doc-1
+opensearch-cli docs delete-by-query sample-a --q 'title:example' --wait
+opensearch-cli indices delete sample-a
+opensearch-cli bulk run --file actions.ndjson
+```
+
+Update input is the native OpenSearch update body, for example `{"doc":{"title":"Updated"}}`;
+scripts and upsert fields follow OpenSearch semantics. Indexing without an ID lets OpenSearch create
+one. `--create` requires an ID and uses the create-only API. Concurrency flags must be supplied together.
+409 reports `document.conflict`. Index creation checks existence, then applies settings/mappings;
+`--shards` and `--replicas` override those body settings. An unacknowledged mutation fails with its
+observed response because the remote outcome is uncertain.
+
+Update gates indexing, update, bulk, index creation, reindex, alias changes and task cancellation.
+Delete gates document/index deletion and delete-by-query. Both categories start disabled and are
+profile-specific. `bulk run` also requires Delete when an explicit delete action appears. Bulk input
+is completely parsed before authentication or HTTP, and the inspected snapshot is used for sending.
+`bulk load` accepts one document per line; `bulk run` accepts native action/document NDJSON. Empty files
+return zero totals. Malformed input includes its original line number and sends no batches.
+Reports contain `succeeded`, `failed`, `took` and `failures` with input line, `_id`, status and reason;
+`bulk.partial` exits nonzero with the full report. Submitted mutations are not retried or rolled back.
+
+Reindex and delete-by-query wait by default; `--no-wait` returns the server task ID and a `tasks show`
+follow-up. Completed failures or timeout exit nonzero with final counts. `tasks show` reports an
+observed error as data. Alias swap checks the current target and sends one atomic remove/add request,
+with `must_exist` on the removal; add/remove also require acknowledgement. Swap adds a plain alias
+without copying filtering, routing or write-index options. Index delete refuses `*` / `?` patterns and
+`_all` unless `--allow-wildcards` is provided; OpenSearch's own destructive-operation settings still apply.
 
 ## License
 

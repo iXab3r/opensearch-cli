@@ -85,7 +85,7 @@ export interface DocumentResult {
   [key: string]: unknown;
 }
 
-function safeShardReason(reason: ShardFailureReason): ShardFailureReason {
+export function safeShardReason(reason: ShardFailureReason): ShardFailureReason {
   const safe = diagnosticCause(Object.assign(new Error(reason.reason ?? ""), { name: reason.type ?? "Error" }));
   return {
     ...(reason.type === undefined ? {} : { type: safe.name }),
@@ -106,8 +106,8 @@ export class OpenSearchClient {
   private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown, queryErrors = false, method = body === undefined ? "GET" : "POST"): Promise<{ status: number; value: T }> {
     const { url, fetch, signal, authorization } = this.connection;
     const response = await fetchWithRedirects(fetch, new URL(path, url), {
-      signal, method, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }), ...(authorization ? { authorization } : {}) },
+      signal, method, ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
+      headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": typeof body === "string" ? "application/x-ndjson" : "application/json" }), ...(authorization ? { authorization } : {}) },
     });
     if (!response.ok && !accepted.includes(response.status)) {
       if (queryErrors && response.status === 400) {
@@ -351,7 +351,131 @@ export class OpenSearchClient {
       ...(value._shards.failures === undefined ? {} : { failures }) };
     return { count: value.count, _shards: shards, partial: { failedShards: shards.failed, totalShards: shards.total, failures } };
   }
+
+  async validateQuery(index: string, body: Record<string, unknown>, explain: boolean): Promise<Record<string, unknown>> {
+    return (await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_validate/query?explain=${explain}`, [], body)).value;
+  }
+
+  async explainQuery(index: string, id: string, body: Record<string,unknown>): Promise<Record<string,unknown>> {
+    return (await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_explain/${encodeURIComponent(id)}`,[],body,true)).value;
+  }
+
+  async analyze(index: string | undefined, body: Record<string,unknown>): Promise<{tokens:Record<string,unknown>[]}> {
+    const {status,value}=await this.request<{tokens:Record<string,unknown>[];error?:ShardFailureReason}>(`${index === undefined ? "" : encodeURIComponent(index)+"/"}_analyze`,[400],body);
+    if(status===400) throw new CliError("OpenSearch could not analyze the text.",{code:"analysis.invalid",cause:diagnosticCause(new Error(value.error?.reason ?? "Analyzer request was rejected."))});
+    return value;
+  }
+
+  async nodes(): Promise<NodeSummary[]> {
+    const parameters=new URLSearchParams({format:"json",bytes:"b",full_id:"true",h:"id,name,cluster_manager,heap.percent,ram.percent,cpu,load_1m,disk.used,disk.avail,disk.total"});
+    const {value:rows}=await this.request<Record<string,string|null>[]>(`_cat/nodes?${parameters}`);
+    const {value:info}=await this.request<{nodes:Record<string,{roles:string[]}>}>("_nodes?filter_path=nodes.*.roles");
+    const number=(value:unknown):number|null=>value===null || value===undefined || value==="-" ? null : Number.isFinite(Number(value)) && String(value).trim()!=="" ? Number(value) : null;
+    return rows.map(row=>({id:row.id!,name:row.name!,roles:info.nodes[row.id!]?.roles ?? [],clusterManager:row.cluster_manager==="*",
+      heapPercent:number(row["heap.percent"]),ramPercent:number(row["ram.percent"]),cpuPercent:number(row.cpu),load1m:number(row.load_1m),
+      diskUsedBytes:number(row["disk.used"]),diskAvailableBytes:number(row["disk.avail"]),diskTotalBytes:number(row["disk.total"])}));
+  }
+
+  async nodeStats(node: string | undefined, metric: string): Promise<Record<string,unknown>> {
+    return (await this.request<Record<string,unknown>>(`_nodes/${encodeURIComponent(node ?? "_all")}/stats/${encodeURIComponent(metric)}`)).value;
+  }
+
+  async shards(index: string | undefined, state: string | undefined): Promise<ShardSummary[]> {
+    const {value}=await this.request<Record<string,string|null>[]>(`_cat/shards${index===undefined?"":"/"+encodeURIComponent(index)}?format=json&h=index,shard,prirep,state,unassigned.reason`);
+    return value.filter(row=>state===undefined || row.state?.toLowerCase()===state.toLowerCase()).map(row=>({index:row.index!,shard:catCount(row.shard)!,primary:row.prirep==="p",state:row.state!,unassignedReason:row["unassigned.reason"] ?? null}));
+  }
+
+  async allocation(body: Record<string,unknown>): Promise<Record<string,unknown>> {
+    const {status,value}=await this.request<Record<string,unknown>&{error?:ShardFailureReason}>("_cluster/allocation/explain",[400],body);
+    if(status===400) {
+      if(Object.keys(body).length===0 && value.error?.type==="illegal_argument_exception" && value.error.reason?.includes("unable to find any unassigned shards")) return {unassigned:false};
+      throw new CliError("OpenSearch could not explain shard allocation.",{code:"allocation.rejected",cause:diagnosticCause(new Error(value.error?.reason ?? "Allocation request was rejected."))});
+    }
+    return value;
+  }
+
+  async tasks(actions: string | undefined, detailed: boolean): Promise<TaskList> {
+    const query=new URLSearchParams({group_by:"none",detailed:String(detailed),...(actions===undefined?{}:{actions})});
+    return (await this.request<TaskList>(`_tasks?${query}`)).value;
+  }
+
+  async task(id: string, cancel = false): Promise<Record<string,unknown>> {
+    const {status,value}=await this.request<Record<string,unknown>&{error?:ShardFailureReason}>(`_tasks/${encodeURIComponent(id)}${cancel?"/_cancel":""}`,[400],undefined,false,cancel?"POST":"GET");
+    if(status===400) throw new CliError("OpenSearch could not cancel the task.",{code:"task.cancelRejected",cause:diagnosticCause(new Error(value.error?.reason ?? "Cancellation was rejected."))});
+    if(cancel) {
+      const failures=[...(Array.isArray(value.node_failures)?value.node_failures:[]),...(Array.isArray(value.task_failures)?value.task_failures:[])];
+      if(failures.length) {
+        const safe={...value,...(Array.isArray(value.node_failures)?{node_failures:value.node_failures.map(f=>safeShardReason(f))}:{}),...(Array.isArray(value.task_failures)?{task_failures:value.task_failures.map(f=>({...f,reason:safeShardReason(f.reason)}))}:{})};
+        throw new CliError("OpenSearch could not cancel the task.",{code:"task.cancelRejected",result:safe,cause:diagnosticCause(new Error(failures.map(f=>typeof f.reason==="string"?f.reason:f.reason?.reason ?? "Cancellation failed.").join("; ")))});
+      }
+    }
+    return {...value,...(value.error?{error:safeShardReason(value.error)}:{})};
+  }
+
+  async writeDocument(operation:"index"|"create"|"update"|"delete",index:string,id:string|undefined,body:Record<string,unknown>|undefined,parameters:Record<string,string>):Promise<DocumentResult> {
+    const path=`${encodeURIComponent(index)}/${operation==="update"?"_update":operation==="create"?"_create":"_doc"}${id===undefined?"":"/"+encodeURIComponent(id)}`;
+    const query=new URLSearchParams(parameters);
+    const method=operation==="delete"?"DELETE":operation==="update" || id===undefined?"POST":"PUT";
+    const {status,value}=await this.request<DocumentResult&{error?:ShardFailureReason}>(path+(query.size?"?"+query:""),[409],body,false,method);
+    if(status===409) throw new CliError("The document conflicts with its current version.",{code:"document.conflict",cause:diagnosticCause(new Error(value.error?.reason ?? "Version conflict."))});
+    return value;
+  }
+
+  async createIndex(index:string,body:Record<string,unknown>):Promise<Record<string,unknown>> {
+    if((await this.request(encodeURIComponent(index),[404],undefined,false,"HEAD")).status===200)
+      throw new CliError("The index already exists.",{code:"index.exists"});
+    const {status,value}=await this.request<Record<string,unknown>&{error?:ShardFailureReason}>(encodeURIComponent(index),[400],body,false,"PUT");
+    if(status===400) {
+      if(value.error?.type==="resource_already_exists_exception")throw new CliError("The index already exists.",{code:"index.exists"});
+      throw new CliError("OpenSearch could not create the index.",{code:"index.createRejected",cause:diagnosticCause(new Error(value.error?.reason ?? "Index creation was rejected."))});
+    }
+    return acknowledged(value);
+  }
+
+  async deleteIndex(index:string):Promise<Record<string,unknown>> {
+    return acknowledged((await this.request<Record<string,unknown>>(encodeURIComponent(index),[],undefined,false,"DELETE")).value);
+  }
+
+  async writeByQuery(index:string|undefined,body:Record<string,unknown>,wait:boolean):Promise<Record<string,unknown>> {
+    const {value}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true);
+    if(!wait) {
+      if(typeof value.task!=="string" || !value.task)throw new CliError("OpenSearch returned no task ID.",{code:"opensearch.invalidResponse"});
+      return {...value,next:[["tasks","show",value.task]]};
+    }
+    if(value.timed_out===true || (Array.isArray(value.failures) && value.failures.length>0))
+      throw new CliError("The operation completed with incomplete results.",{code:"operation.partial",result:value});
+    return value;
+  }
+
+  async changeAlias(alias:string,index:string,operation:"add"|"remove"|"swap",destination?:string):Promise<Record<string,unknown>> {
+    if(operation==="swap") {
+      const {status,value}=await this.request<Record<string,{aliases?:Record<string,unknown>}>>(`_alias/${encodeURIComponent(alias)}`,[404]);
+      if(status===404 || !value[index]?.aliases || !Object.hasOwn(value[index]!.aliases!,alias))
+        throw new CliError("The alias does not point to the source index.",{code:"alias.sourceMismatch"});
+    }
+    const actions=operation==="swap"?[{remove:{index,alias,must_exist:true}},{add:{index:destination,alias}}]:operation==="remove"?[{remove:{index,alias,must_exist:true}}]:[{add:{index,alias}}];
+    return acknowledged((await this.request<Record<string,unknown>>("_aliases",[],{actions})).value);
+  }
+
+  async bulk(index:string|undefined,body:string):Promise<BulkResponse> {
+    return (await this.request<BulkResponse>(`${index===undefined?"":encodeURIComponent(index)+"/"}_bulk`,[],body)).value;
+  }
 }
+
+function acknowledged(value:Record<string,unknown>):Record<string,unknown> {
+  if(value.acknowledged!==true) throw new CliError("OpenSearch did not acknowledge the operation; its outcome is uncertain.",{code:"operation.unacknowledged",result:value});
+  return value;
+}
+
+/** Per-action bulk results correspond to request order, not document-ID uniqueness. */
+export interface BulkResponse {took:number;errors:boolean;items:Record<string,{_id?:string;status:number;error?:ShardFailureReason}>[]}
+
+/** Numeric CAT observations joined to the full roles reported by node information. */
+export interface NodeSummary {id:string;name:string;roles:string[];clusterManager:boolean;heapPercent:number|null;ramPercent:number|null;cpuPercent:number|null;load1m:number|null;diskUsedBytes:number|null;diskAvailableBytes:number|null;diskTotalBytes:number|null}
+/** One observed shard allocation, including an unavailable reason when not supplied. */
+export interface ShardSummary {index:string;shard:number;primary:boolean;state:string;unassignedReason:string|null}
+/** Flat task-list response; task identity consists of node ID and task number. */
+export interface TaskList {tasks:{node:string;id:number;action:string;running_time_in_nanos:number;cancellable:boolean}[];[key:string]:unknown}
 
 export async function clientFor(context: CommandContext): Promise<OpenSearchClient> {
   const scheme = context.profile.values.auth;

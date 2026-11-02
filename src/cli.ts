@@ -4,6 +4,9 @@ import { clientFor, type AliasSummary, type ClusterHealth, type ClusterInfo, typ
 import { readQuery } from "./query.js";
 import { version } from "./version.js";
 import { aggregateCommand, searchCommand } from "./search.js";
+import { diagnoseCommands } from "./diagnose.js";
+import {documentWriteCommands,indexWriteCommands,aliasWriteCommands,reindexCommand} from "./write.js";
+import {bulkCommand} from "./bulk.js";
 
 export function createDefinition(): CliDefinition {
   return {
@@ -22,7 +25,7 @@ export function createDefinition(): CliDefinition {
       ],
     },
     auth: openSearchAuth(),
-    commands: [searchCommand(), aggregateCommand(), command("docs", "Read documents by ID", [
+    commands: [...diagnoseCommands(), bulkCommand(), reindexCommand(), searchCommand(), aggregateCommand(), command("docs", "Read and write documents", [...documentWriteCommands(),
       command("get <index> <ids...>", "Get one or more documents", async ({args},context)=>(await clientFor(context)).documents(String(args.index),args.ids as string[]),{permission:"ReadOnly"}),
       command("exists <index> <id>", "Check whether a document exists", async ({args},context)=>(await clientFor(context)).documentExists(args.index,args.id),{permission:"ReadOnly"}),
     ]), command("cluster", "Inspect the OpenSearch cluster", [
@@ -63,7 +66,7 @@ export function createDefinition(): CliDefinition {
           { label: "Active %", value: value => value.active_shards_percent_as_number },
         ], sections: [{ title: () => "Indices", lines: value => value.indices ? Object.entries(value.indices).map(([name, index]) => `${name}: ${index.status}`) : undefined }] }),
       }),
-    ]), command("indices", "Explore OpenSearch indices", [
+    ]), command("indices", "Explore and manage OpenSearch indices", [...indexWriteCommands(),
       command("list [pattern]", "List index health, counts and sizes", async ({ args, options }, context) =>
         (await clientFor(context)).indices({ ...(args.pattern === undefined ? {} : { pattern: String(args.pattern) }), ...options }), {
         permission: "ReadOnly",
@@ -88,7 +91,7 @@ export function createDefinition(): CliDefinition {
           return value;
         } }],
       }),
-    ]), command("aliases", "Explore index aliases", [
+    ]), command("aliases", "Explore and manage index aliases", [...aliasWriteCommands(),
       command("list [pattern]", "List alias targets and flags", async ({ args }, context) =>
         (await clientFor(context)).aliases(args.pattern === undefined ? undefined : String(args.pattern)), {
         permission: "ReadOnly", view: tableView<AliasSummary>({ columns: [
