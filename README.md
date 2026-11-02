@@ -228,6 +228,9 @@ is completely parsed before authentication or HTTP, and the inspected snapshot i
 return zero totals. Malformed input includes its original line number and sends no batches.
 Reports contain `succeeded`, `failed`, `took` and `failures` with input line, `_id`, status and reason;
 `bulk.partial` exits nonzero with the full report. Submitted mutations are not retried or rolled back.
+A native delete of a missing document counts as successful. If a later request fails,
+`bulk.requestFailed` retains known counts, timing and item failures; `unconfirmedCount` is the current
+batch without item receipts and `remainingCount` is the number of actions not yet sent.
 
 Reindex and delete-by-query wait by default; `--no-wait` returns the server task ID and a `tasks show`
 follow-up. Completed failures or timeout exit nonzero with final counts. `tasks show` reports an

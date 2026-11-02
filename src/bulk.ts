@@ -11,7 +11,7 @@ import {
   type CommandDefinition,
   type CommandInput,
 } from "@eyeauras/cli-factory";
-import { clientFor, safeShardReason } from "./client.js";
+import { clientFor, safeShardReason, type BulkResponse } from "./client.js";
 
 interface Action {
   line: number;
@@ -28,6 +28,8 @@ interface BulkReport {
   succeeded: number;
   failed: number;
   took: number;
+  unconfirmedCount?: number;
+  remainingCount?: number;
   failures: { line: number; _id?: string; status: number; reason: string }[];
 }
 
@@ -175,6 +177,8 @@ export function bulkCommand(): CommandDefinition {
         fields: [
           { label: "Succeeded", value: (v) => v.succeeded },
           { label: "Failed", value: (v) => v.failed },
+          { label: "Unconfirmed", value: (v) => v.unconfirmedCount },
+          { label: "Remaining", value: (v) => v.remainingCount },
           { label: "Took (ms)", value: (v) => v.took },
         ],
         sections: [
@@ -211,10 +215,27 @@ export function bulkCommand(): CommandDefinition {
             offset,
             offset + snapshot.batchSize,
           );
-          const response = await client.bulk(
-            snapshot.index,
-            batch.map((a) => a.wire).join(""),
-          );
+          let response: BulkResponse;
+          try {
+            response = await client.bulk(
+              snapshot.index,
+              batch.map((a) => a.wire).join(""),
+            );
+          } catch (cause) {
+            throw new CliError(
+              "Bulk submission failed before item results were received.",
+              {
+                code: "bulk.requestFailed",
+                cause,
+                result: {
+                  ...report,
+                  unconfirmedCount: batch.length,
+                  remainingCount:
+                    snapshot.actions.length - offset - batch.length,
+                },
+              },
+            );
+          }
           if (
             !Array.isArray(response.items) ||
             response.items.length !== batch.length ||
@@ -226,8 +247,12 @@ export function bulkCommand(): CommandDefinition {
             });
           report.took += response.took;
           response.items.forEach((entry, index) => {
-            const item = Object.values(entry)[0]!;
-            if (item.error || item.status >= 300) {
+            const [operation, item] = Object.entries(entry)[0]!;
+            const missingDelete =
+              operation === "delete" &&
+              item.status === 404 &&
+              item.result === "not_found";
+            if (item.error || (item.status >= 300 && !missingDelete)) {
               report.failed++;
               report.failures.push({
                 line: batch[index]!.line,

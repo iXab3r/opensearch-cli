@@ -96,6 +96,27 @@ export function safeShardReason(reason: ShardFailureReason): ShardFailureReason 
   };
 }
 
+function safeDiagnostic(error: unknown): unknown {
+  return typeof error === "string" ? diagnosticCause(new Error(error)).message
+    : error && typeof error === "object" ? safeShardReason(error as ShardFailureReason) : error;
+}
+
+/** Bulk-by-scroll mixes indexing causes and search reasons in the same failure array. */
+function safeOperationResponse(response: Record<string, unknown>): Record<string, unknown> {
+  return {...response,...(Array.isArray(response.failures)?{failures:response.failures.map(failure=>({...failure,
+    ...(failure.cause===undefined?{}:{cause:safeDiagnostic(failure.cause)}),
+    ...(failure.reason===undefined?{}:{reason:safeDiagnostic(failure.reason)}),
+  }))}:{})};
+}
+
+function safeTaskResponse(value: Record<string, unknown>): Record<string, unknown> {
+  return {...value,...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),
+    ...(value.response && typeof value.response==="object" && !Array.isArray(value.response)?{response:safeOperationResponse(value.response as Record<string,unknown>)}:{}),
+    ...(Array.isArray(value.node_failures)?{node_failures:value.node_failures.map(safeDiagnostic)}:{}),
+    ...(Array.isArray(value.task_failures)?{task_failures:value.task_failures.map(failure=>({...failure,reason:safeDiagnostic(failure.reason)}))}:{}),
+  };
+}
+
 // Reserved mapper metadata, not a blanket underscore-prefix rule for user fields.
 const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignored", "_field_names", "_version", "_seq_no", "_primary_term", "_size", "_doc_count", "_nested_path", "_tombstone", "_parent_join", "_data_stream_timestamp", "_feature"]);
 
@@ -355,8 +376,7 @@ export class OpenSearchClient {
   async validateQuery(index: string, body: Record<string, unknown>, explain: boolean): Promise<Record<string, unknown>> {
     const parameters=new URLSearchParams({explain:"true",...(explain?{rewrite:"true",all_shards:"true"}:{})});
     const {value}=await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_validate/query?${parameters}`, [], body);
-    const safeError=(error:unknown):unknown=>typeof error==="string"?diagnosticCause(new Error(error)).message:error && typeof error==="object"?safeShardReason(error as ShardFailureReason):error;
-    return {...value,...(value.error===undefined?{}:{error:safeError(value.error)}),...(Array.isArray(value.explanations)?{explanations:value.explanations.map(explanation=>({...explanation,...(explanation.error===undefined?{}:{error:safeError(explanation.error)})}))}:{})};
+    return {...value,...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),...(Array.isArray(value.explanations)?{explanations:value.explanations.map(explanation=>({...explanation,...(explanation.error===undefined?{}:{error:safeDiagnostic(explanation.error)})}))}:{})};
   }
 
   async explainQuery(index: string, id: string, body: Record<string,unknown>): Promise<Record<string,unknown>> {
@@ -399,7 +419,7 @@ export class OpenSearchClient {
 
   async tasks(actions: string | undefined, detailed: boolean): Promise<TaskList> {
     const query=new URLSearchParams({group_by:"none",detailed:String(detailed),...(actions===undefined?{}:{actions})});
-    return (await this.request<TaskList>(`_tasks?${query}`)).value;
+    return safeTaskResponse((await this.request<TaskList>(`_tasks?${query}`)).value) as TaskList;
   }
 
   async task(id: string, cancel = false): Promise<Record<string,unknown>> {
@@ -408,11 +428,11 @@ export class OpenSearchClient {
     if(cancel) {
       const failures=[...(Array.isArray(value.node_failures)?value.node_failures:[]),...(Array.isArray(value.task_failures)?value.task_failures:[])];
       if(failures.length) {
-        const safe={...value,...(Array.isArray(value.node_failures)?{node_failures:value.node_failures.map(f=>safeShardReason(f))}:{}),...(Array.isArray(value.task_failures)?{task_failures:value.task_failures.map(f=>({...f,reason:safeShardReason(f.reason)}))}:{})};
+        const safe=safeTaskResponse(value);
         throw new CliError("OpenSearch could not cancel the task.",{code:"task.cancelRejected",result:safe,cause:diagnosticCause(new Error(failures.map(f=>typeof f.reason==="string"?f.reason:f.reason?.reason ?? "Cancellation failed.").join("; ")))});
       }
     }
-    return {...value,...(value.error?{error:safeShardReason(value.error)}:{})};
+    return safeTaskResponse(value);
   }
 
   async writeDocument(operation:"index"|"create"|"update"|"delete",index:string,id:string|undefined,body:Record<string,unknown>|undefined,parameters:Record<string,string>):Promise<DocumentResult> {
@@ -441,7 +461,7 @@ export class OpenSearchClient {
 
   async writeByQuery(index:string|undefined,body:Record<string,unknown>,wait:boolean):Promise<Record<string,unknown>> {
     const {value:response}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true);
-    const value:Record<string,unknown>={...response,...(Array.isArray(response.failures)?{failures:response.failures.map(failure=>({...failure,...(failure.cause===undefined?{}:{cause:safeShardReason(failure.cause)})}))}:{})};
+    const value=safeOperationResponse(response);
     if(!wait) {
       if(typeof value.task!=="string" || !value.task)throw new CliError("OpenSearch returned no task ID.",{code:"opensearch.invalidResponse"});
       return {...value,next:[["tasks","show",value.task]]};
@@ -472,7 +492,7 @@ function acknowledged(value:Record<string,unknown>):Record<string,unknown> {
 }
 
 /** Per-action bulk results correspond to request order, not document-ID uniqueness. */
-export interface BulkResponse {took:number;errors:boolean;items:Record<string,{_id?:string;status:number;error?:ShardFailureReason}>[]}
+export interface BulkResponse {took:number;errors:boolean;items:Record<string,{_id?:string;status:number;result?:string;error?:ShardFailureReason}>[]}
 
 /** Numeric CAT observations joined to the full roles reported by node information. */
 export interface NodeSummary {id:string;name:string;roles:string[];clusterManager:boolean;heapPercent:number|null;ramPercent:number|null;cpuPercent:number|null;load1m:number|null;diskUsedBytes:number|null;diskAvailableBytes:number|null;diskTotalBytes:number|null}
