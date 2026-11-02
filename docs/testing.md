@@ -46,6 +46,22 @@ diagnostics. No live cluster or index mutation is used.
 
 ## M1 wire sources
 
+M4–M5 diagnostic/write fixtures are hand-authored synthetic OpenSearch 2.19/3.x shapes.
+They follow the official [CAT nodes](https://docs.opensearch.org/2.19/api-reference/cat/cat-nodes/),
+[tasks](https://docs.opensearch.org/2.19/api-reference/tasks/list-tasks/),
+[bulk](https://docs.opensearch.org/2.19/api-reference/document-apis/bulk/) and
+[reindex](https://docs.opensearch.org/2.19/api-reference/document-apis/reindex/) contracts.
+Alias atomicity and `remove.must_exist` are backed by the
+[Manage Aliases API](https://docs.opensearch.org/latest/api-reference/alias/aliases-api/) and
+[2.19 request parser](https://github.com/opensearch-project/OpenSearch/blob/2.19/server/src/main/java/org/opensearch/action/admin/indices/alias/IndicesAliasesRequest.java).
+Tests use native-fetch MSW, real temporary JSON/NDJSON files, profile permissions, human/JSON/RPC,
+pre-HTTP denial and failed-result retention. No deployment captures or real endpoints are used.
+Native by-query failure status fixtures follow the [2.19 response listener](https://github.com/opensearch-project/OpenSearch/blob/2.19/modules/reindex/src/main/java/org/opensearch/index/reindex/BulkIndexByScrollResponseContentListener.java)
+and its [3.0 implementation](https://github.com/opensearch-project/OpenSearch/blob/3.0/modules/reindex/src/main/java/org/opensearch/index/reindex/BulkIndexByScrollResponseContentListener.java).
+Node/broadcast/replication diagnostic headers retain their native identity and counter fields;
+only their diagnostic subtrees pass Core redaction. Machine and human tests cover both indexing
+failure causes and search/scroll reasons, including completed asynchronous task responses.
+
 Documentation-derived fixtures use the [Cluster Information API](https://docs.opensearch.org/latest/api-reference/cluster-api/info/),
 [Cluster Health API](https://docs.opensearch.org/latest/api-reference/cluster-api/cluster-health/) and
 [Security authinfo API](https://docs.opensearch.org/latest/security/api/authentication/auth-info/).

@@ -42,11 +42,11 @@
     "proof": "npm run build && node scripts/proof.mjs"
   },
   "dependencies": {
-    "@eyeauras/cli-factory": "0.5.4"
+    "@eyeauras/cli-factory": "0.5.5"
   },
   "devDependencies": {
-    "typescript": "7.0.2",
     "@types/node": "24.19.2",
-    "msw": "3.0.3"
+    "msw": "3.0.3",
+    "typescript": "7.0.2"
   }
 }
