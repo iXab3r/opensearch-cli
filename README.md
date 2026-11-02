@@ -192,6 +192,9 @@ metrics. Allocation without a selection explains OpenSearch's first unassigned s
 shard returns `{unassigned:false}`. Selected shards default to replica unless `--primary` is supplied.
 Task reads preserve status, completed results and errors; cancelling requires Update and requests
 cancellation without claiming the task has already stopped. All other diagnostics are ReadOnly.
+Human node/task observations show instants; machine outputs retain native numeric timestamps.
+Native shard/node failure diagnostics are sanitized before presentation while their identities,
+counts and metrics are retained. Replica failures remain visible alongside a successful primary write.
 
 ## Write documents and manage indices
 
@@ -238,6 +241,8 @@ observed error as data. Alias swap checks the current target and sends one atomi
 with `must_exist` on the removal; add/remove also require acknowledgement. Swap adds a plain alias
 without copying filtering, routing or write-index options. Index delete refuses `*` / `?` patterns and
 `_all` unless `--allow-wildcards` is provided; OpenSearch's own destructive-operation settings still apply.
+Native failed operation bodies retain their counts even when OpenSearch returns an HTTP failure
+status. Ordinary HTTP error envelopes keep their HTTP error code.
 
 ## License
 

@@ -27,6 +27,50 @@ const bodyOption = {
   required: true,
 };
 
+// Only native telemetry/TaskInfo metadata is formatted; operation response data stays unchanged.
+function observationTimes(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(observationTimes);
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        typeof item === "number" &&
+        ["timestamp", "start_time_in_millis"].includes(key)
+          ? new Date(item).toISOString()
+          : observationTimes(item),
+      ]),
+    );
+  return value;
+}
+const statisticsView = recordView<Record<string, unknown>>({
+  fields: [],
+  sections: [
+    {
+      title: () => "Node statistics",
+      lines: (value) => [formatHuman(observationTimes(value))],
+    },
+  ],
+});
+const taskView = recordView<Record<string, unknown>>({
+  fields: [],
+  sections: [
+    {
+      title: () => "Task",
+      lines: (value) => [
+        formatHuman({
+          ...value,
+          ...(value.task === undefined
+            ? {}
+            : { task: observationTimes(value.task) }),
+          ...(value.nodes === undefined
+            ? {}
+            : { nodes: observationTimes(value.nodes) }),
+        }),
+      ],
+    },
+  ],
+});
+
 /** Read-only diagnostic commands and the separately gated task cancellation action. */
 export function diagnoseCommands(): CommandDefinition[] {
   return [
@@ -53,8 +97,24 @@ export function diagnoseCommands(): CommandDefinition[] {
             fields: [
               { label: "Valid", value: (v) => scalar(v.valid) },
               { label: "Error", value: (v) => scalar(v.error) },
+              {
+                label: "Failed shards",
+                value: (v) => {
+                  const shards = v._shards as { failed?: number } | undefined;
+                  return shards?.failed ? shards.failed : undefined;
+                },
+              },
             ],
             sections: [
+              {
+                title: () => "Shard failures",
+                lines: (v) => {
+                  const shards = v._shards as
+                    | { failures?: unknown[] }
+                    | undefined;
+                  return shards?.failures?.map(formatHuman);
+                },
+              },
               {
                 title: () => "Explanations",
                 lines: (v) =>
@@ -192,6 +252,7 @@ export function diagnoseCommands(): CommandDefinition[] {
               defaultValue: "jvm,fs,os",
             },
           ],
+          view: statisticsView,
         },
       ),
     ]),
@@ -328,14 +389,14 @@ export function diagnoseCommands(): CommandDefinition[] {
         "show <id>",
         "Show task status and result",
         async ({ args }, context) => (await clientFor(context)).task(args.id),
-        { permission: "ReadOnly" },
+        { permission: "ReadOnly", view: taskView },
       ),
       command(
         "cancel <id>",
         "Request cancellation of a task",
         async ({ args }, context) =>
           (await clientFor(context)).task(args.id, true),
-        { permission: "Update" },
+        { permission: "Update", view: taskView },
       ),
     ]),
   ];

@@ -97,20 +97,32 @@ export function safeShardReason(reason: ShardFailureReason): ShardFailureReason 
 }
 
 function safeDiagnostic(error: unknown): unknown {
-  return typeof error === "string" ? diagnosticCause(new Error(error)).message
-    : error && typeof error === "object" ? safeShardReason(error as ShardFailureReason) : error;
+  if(typeof error === "string") return diagnosticCause(new Error(error)).message;
+  if(Array.isArray(error)) return error.map(safeDiagnostic);
+  if(error && typeof error === "object") return Object.fromEntries(Object.entries(error).map(([key,value])=>[key,safeDiagnostic(value)]));
+  return error;
+}
+
+/** OpenSearch broadcast/replication and node headers carry different diagnostic envelopes. */
+function safeResponseHeaders(response: Record<string,unknown>): Record<string,unknown> {
+  const shards=response._shards as {failures?: Record<string,unknown>[]} | undefined;
+  const nodes=response._nodes as {failures?: unknown[]} | undefined;
+  return {...response,
+    ...(Array.isArray(shards?.failures)?{_shards:{...shards,failures:shards.failures.map(failure=>({...failure,...(failure.reason===undefined?{}:{reason:safeDiagnostic(failure.reason)})}))}}:{}),
+    ...(Array.isArray(nodes?.failures)?{_nodes:{...nodes,failures:nodes.failures.map(safeDiagnostic)}}:{}),
+  };
 }
 
 /** Bulk-by-scroll mixes indexing causes and search reasons in the same failure array. */
 function safeOperationResponse(response: Record<string, unknown>): Record<string, unknown> {
-  return {...response,...(Array.isArray(response.failures)?{failures:response.failures.map(failure=>({...failure,
+  return {...safeResponseHeaders(response),...(Array.isArray(response.failures)?{failures:response.failures.map(failure=>({...failure,
     ...(failure.cause===undefined?{}:{cause:safeDiagnostic(failure.cause)}),
     ...(failure.reason===undefined?{}:{reason:safeDiagnostic(failure.reason)}),
   }))}:{})};
 }
 
 function safeTaskResponse(value: Record<string, unknown>): Record<string, unknown> {
-  return {...value,...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),
+  return {...safeResponseHeaders(value),...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),
     ...(value.response && typeof value.response==="object" && !Array.isArray(value.response)?{response:safeOperationResponse(value.response as Record<string,unknown>)}:{}),
     ...(Array.isArray(value.node_failures)?{node_failures:value.node_failures.map(safeDiagnostic)}:{}),
     ...(Array.isArray(value.task_failures)?{task_failures:value.task_failures.map(failure=>({...failure,reason:safeDiagnostic(failure.reason)}))}:{}),
@@ -124,19 +136,22 @@ const metadataFields = new Set(["_id", "_index", "_source", "_routing", "_ignore
 export class OpenSearchClient {
   constructor(private readonly connection: { url: string; fetch: typeof fetch; signal: AbortSignal; authorization?: string }) {}
 
-  private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown, queryErrors = false, method = body === undefined ? "GET" : "POST"): Promise<{ status: number; value: T }> {
+  private async request<T>(path: string, accepted: readonly number[] = [], body?: unknown, queryErrors = false, method = body === undefined ? "GET" : "POST", operationResult = false): Promise<{ status: number; value: T }> {
     const { url, fetch, signal, authorization } = this.connection;
     const response = await fetchWithRedirects(fetch, new URL(path, url), {
       signal, method, ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
       headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": typeof body === "string" ? "application/x-ndjson" : "application/json" }), ...(authorization ? { authorization } : {}) },
     });
     if (!response.ok && !accepted.includes(response.status)) {
-      if (queryErrors && response.status === 400) {
+      if ((queryErrors && response.status === 400) || operationResult) {
         const bytes = await readResponseBody(response, { signal });
-        let error: ShardFailureReason | undefined;
-        try { error = (JSON.parse(new TextDecoder().decode(bytes)) as {error?: ShardFailureReason}).error; } catch { /* Use the status when the server supplied no structured error. */ }
+        let parsed: Record<string,unknown> | undefined;
+        try { parsed = JSON.parse(new TextDecoder().decode(bytes)); } catch { /* Keep an ordinary HTTP error when no native result was supplied. */ }
+        // Bulk-by-scroll sends complete failed-operation results with timeout/highest-failure status.
+        if(operationResult && typeof parsed?.total==="number" && Array.isArray(parsed.failures)) return {status:response.status,value:parsed as T};
+        const error = parsed?.error as ShardFailureReason | undefined;
         const reason = error?.root_cause?.find(cause => ["query_shard_exception", "parse_exception", "parsing_exception"].includes(cause.type ?? "")) ?? error;
-        if (reason && ["query_shard_exception", "parse_exception", "parsing_exception"].includes(reason.type ?? ""))
+        if (queryErrors && response.status===400 && reason && ["query_shard_exception", "parse_exception", "parsing_exception"].includes(reason.type ?? ""))
           throw new CliError("OpenSearch could not parse the query.", {code:"query.invalid", cause:diagnosticCause(new Error(reason.reason ?? "Invalid query."))});
       }
       await response.body?.cancel();
@@ -376,7 +391,7 @@ export class OpenSearchClient {
   async validateQuery(index: string, body: Record<string, unknown>, explain: boolean): Promise<Record<string, unknown>> {
     const parameters=new URLSearchParams({explain:"true",...(explain?{rewrite:"true",all_shards:"true"}:{})});
     const {value}=await this.request<Record<string,unknown>>(`${encodeURIComponent(index)}/_validate/query?${parameters}`, [], body);
-    return {...value,...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),...(Array.isArray(value.explanations)?{explanations:value.explanations.map(explanation=>({...explanation,...(explanation.error===undefined?{}:{error:safeDiagnostic(explanation.error)})}))}:{})};
+    return {...safeResponseHeaders(value),...(value.error===undefined?{}:{error:safeDiagnostic(value.error)}),...(Array.isArray(value.explanations)?{explanations:value.explanations.map(explanation=>({...explanation,...(explanation.error===undefined?{}:{error:safeDiagnostic(explanation.error)})}))}:{})};
   }
 
   async explainQuery(index: string, id: string, body: Record<string,unknown>): Promise<Record<string,unknown>> {
@@ -400,7 +415,7 @@ export class OpenSearchClient {
   }
 
   async nodeStats(node: string | undefined, metric: string): Promise<Record<string,unknown>> {
-    return (await this.request<Record<string,unknown>>(`_nodes/${encodeURIComponent(node ?? "_all")}/stats/${encodeURIComponent(metric)}`)).value;
+    return safeResponseHeaders((await this.request<Record<string,unknown>>(`_nodes/${encodeURIComponent(node ?? "_all")}/stats/${encodeURIComponent(metric)}`)).value);
   }
 
   async shards(index: string | undefined, state: string | undefined): Promise<ShardSummary[]> {
@@ -414,7 +429,7 @@ export class OpenSearchClient {
       if(Object.keys(body).length===0 && value.error?.type==="illegal_argument_exception" && value.error.reason?.includes("unable to find any unassigned shards")) return {unassigned:false};
       throw new CliError("OpenSearch could not explain shard allocation.",{code:"allocation.rejected",cause:diagnosticCause(new Error(value.error?.reason ?? "Allocation request was rejected."))});
     }
-    return value;
+    return safeDiagnostic(value) as Record<string,unknown>;
   }
 
   async tasks(actions: string | undefined, detailed: boolean): Promise<TaskList> {
@@ -441,7 +456,7 @@ export class OpenSearchClient {
     const method=operation==="delete"?"DELETE":operation==="update" || id===undefined?"POST":"PUT";
     const {status,value}=await this.request<DocumentResult&{error?:ShardFailureReason}>(path+(query.size?"?"+query:""),[409],body,false,method);
     if(status===409) throw new CliError("The document conflicts with its current version.",{code:"document.conflict",cause:diagnosticCause(new Error(value.error?.reason ?? "Version conflict."))});
-    return value;
+    return safeResponseHeaders(value) as DocumentResult;
   }
 
   async createIndex(index:string,body:Record<string,unknown>):Promise<Record<string,unknown>> {
@@ -460,13 +475,13 @@ export class OpenSearchClient {
   }
 
   async writeByQuery(index:string|undefined,body:Record<string,unknown>,wait:boolean):Promise<Record<string,unknown>> {
-    const {value:response}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true);
+    const {status,value:response}=await this.request<Record<string,unknown>>(`${index===undefined?"_reindex":encodeURIComponent(index)+"/_delete_by_query"}?wait_for_completion=${wait}`,[],body,true,"POST",wait);
     const value=safeOperationResponse(response);
     if(!wait) {
       if(typeof value.task!=="string" || !value.task)throw new CliError("OpenSearch returned no task ID.",{code:"opensearch.invalidResponse"});
       return {...value,next:[["tasks","show",value.task]]};
     }
-    if(value.timed_out===true || (Array.isArray(value.failures) && value.failures.length>0))
+    if(status>=400 || value.timed_out===true || (Array.isArray(value.failures) && value.failures.length>0))
       throw new CliError("The operation completed with incomplete results.",{code:"operation.partial",result:value});
     return value;
   }

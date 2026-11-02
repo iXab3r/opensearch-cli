@@ -56,6 +56,22 @@ const documentView = recordView<DocumentResult>({
     { label: "Version", value: (v) => v._version },
     { label: "Sequence", value: (v) => v._seq_no },
     { label: "Primary term", value: (v) => v._primary_term },
+    {
+      label: "Failed shards",
+      value: (v) => {
+        const shards = v._shards as { failed?: number } | undefined;
+        return shards?.failed ? shards.failed : undefined;
+      },
+    },
+  ],
+  sections: [
+    {
+      title: () => "Replica failures",
+      lines: (v) => {
+        const shards = v._shards as { failures?: unknown[] } | undefined;
+        return shards?.failures?.map(formatHuman);
+      },
+    },
   ],
 });
 
