@@ -192,7 +192,8 @@ metrics. Allocation without a selection explains OpenSearch's first unassigned s
 shard returns `{unassigned:false}`. Selected shards default to replica unless `--primary` is supplied.
 Task reads preserve status, completed results and errors; cancelling requires Update and requests
 cancellation without claiming the task has already stopped. All other diagnostics are ReadOnly.
-Human node/task observations show instants; machine outputs retain native numeric timestamps.
+Human node/task observations show instants, and node statistics show byte metrics in binary units;
+machine outputs retain native numeric timestamps and byte counts.
 Native shard/node failure diagnostics are sanitized before presentation while their identities,
 counts and metrics are retained. Replica failures remain visible alongside a successful primary write.
 
@@ -200,20 +201,20 @@ counts and metrics are retained. Replica failures remain visible alongside a suc
 
 ```text
 opensearch-cli permissions grant Update --profile dev
-opensearch-cli docs index sample-a doc-1 --body-file document.json --refresh wait_for
-opensearch-cli docs index sample-a doc-2 --create --body-file document.json
-opensearch-cli docs update sample-a doc-1 --body-file update.json --if-seq-no 7 --if-primary-term 2
-opensearch-cli bulk load sample-a --file documents.ndjson --id-field id --batch-size 1000
-opensearch-cli indices create sample-b --body-file index.json --shards 1 --replicas 0
-opensearch-cli reindex --source sample-a --dest sample-b --q 'title:example' --no-wait
-opensearch-cli aliases swap sample-alias --from sample-a --to sample-b
-opensearch-cli aliases add sample-alias sample-b
-opensearch-cli aliases remove sample-alias sample-a
+opensearch-cli docs index sample-a doc-1 --body-file document.json --refresh wait_for --profile dev
+opensearch-cli docs index sample-a doc-2 --create --body-file document.json --profile dev
+opensearch-cli docs update sample-a doc-1 --body-file update.json --if-seq-no 7 --if-primary-term 2 --profile dev
+opensearch-cli bulk load sample-a --file documents.ndjson --id-field id --batch-size 1000 --profile dev
+opensearch-cli indices create sample-b --body-file index.json --shards 1 --replicas 0 --profile dev
+opensearch-cli reindex --source sample-a --dest sample-b --q 'title:example' --no-wait --profile dev
+opensearch-cli aliases swap sample-alias --from sample-a --to sample-b --profile dev
+opensearch-cli aliases add sample-alias sample-b --profile dev
+opensearch-cli aliases remove sample-alias sample-a --profile dev
 opensearch-cli permissions grant Delete --profile dev
-opensearch-cli docs delete sample-a doc-1
-opensearch-cli docs delete-by-query sample-a --q 'title:example' --wait
-opensearch-cli indices delete sample-a
-opensearch-cli bulk run --file actions.ndjson
+opensearch-cli docs delete sample-a doc-1 --profile dev
+opensearch-cli docs delete-by-query sample-a --q 'title:example' --wait --profile dev
+opensearch-cli indices delete sample-a --profile dev
+opensearch-cli bulk run --file actions.ndjson --profile dev
 ```
 
 Update input is the native OpenSearch update body, for example `{"doc":{"title":"Updated"}}`;

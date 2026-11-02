@@ -46,14 +46,35 @@ function observationTimes(value: unknown): unknown {
     );
   return value;
 }
-const statisticsView = recordView<Record<string, unknown>>({
-  fields: [],
-  sections: [
+// Core formats numeric byte cells; other observations remain text under their native metric paths.
+function statisticRows(
+  value: unknown,
+  metric = "",
+): { metric: string; value: string | number }[] {
+  if (value !== null && typeof value === "object")
+    return Object.entries(value).flatMap(([key, item]) =>
+      statisticRows(item, metric ? metric + "." + key : key),
+    );
+  return [
     {
-      title: () => "Node statistics",
-      lines: (value) => [formatHuman(observationTimes(value))],
+      metric,
+      value:
+        typeof value === "number" && metric.endsWith("_in_bytes")
+          ? value
+          : String(value),
     },
+  ];
+}
+const statisticsView = tableView<
+  { metric: string; value: string | number },
+  Record<string, unknown>
+>({
+  rows: (value) => statisticRows(observationTimes(value)),
+  columns: [
+    { header: "Metric", value: (row) => row.metric },
+    { header: "Value", value: (row) => row.value, format: "bytes" },
   ],
+  empty: "No node statistics.",
 });
 const taskView = recordView<Record<string, unknown>>({
   fields: [],
