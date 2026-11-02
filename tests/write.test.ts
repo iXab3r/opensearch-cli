@@ -666,7 +666,12 @@ test("Story24 alias swap uses one atomic guarded request; add and remove are Upd
     "--to",
     "sample-b",
   ];
-  assert.deepEqual(await fixture.json(app, argv), { acknowledged: true });
+  assert.deepEqual(await fixture.json(app, argv), {
+    acknowledged: true,
+    alias: "sample-alias",
+    from: "sample-a",
+    to: "sample-b",
+  });
   assert.equal(writes, 1);
   mode = "add";
   assert.equal(
