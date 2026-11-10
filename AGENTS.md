@@ -13,6 +13,7 @@ profiles, auth, output or tests, read the framework contract at the pinned versi
 - [`docs/integrations.md`](https://github.com/iXab3r/EyeAuras.CliFactory/blob/main/docs/integrations.md) — external integration path
 - [`docs/testing.md`](https://github.com/iXab3r/EyeAuras.CliFactory/blob/main/docs/testing.md) — mock-first tests and sanitization
 - [`docs/roles/cli-writer.md`](https://github.com/iXab3r/EyeAuras.CliFactory/blob/main/docs/roles/cli-writer.md) — any text a person reads at the terminal
+- [`.claude/skills/product-readme`](https://github.com/iXab3r/EyeAuras.CliFactory/tree/main/.claude/skills/product-readme) — README overview, coverage matrix and pictures; see [updating](docs/coverage-comparison.md#updating)
 
 Those laws apply here unless this file says otherwise.
 

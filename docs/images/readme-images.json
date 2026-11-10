@@ -1,0 +1,172 @@
+{
+  "matrix": {
+    "columns": [
+      {
+        "title": "opensearch-cli 0.2.0",
+        "subtitle": "this package"
+      },
+      {
+        "title": "official opensearch-cli 1.2.0",
+        "subtitle": "dedicated commands"
+      }
+    ],
+    "rowHeader": "API area",
+    "countHeader": "operations",
+    "legend": "Share of specified operations reachable",
+    "ariaLabel": "Coverage matrix: opensearch-cli 0.2.0 reaches 41 of 490 operations (8%) through its commands; the official opensearch-cli 1.2.0 reaches 3 (1%) through dedicated commands",
+    "rows": [
+      {
+        "name": "Documents and search",
+        "total": 43,
+        "values": [
+          17,
+          1
+        ]
+      },
+      {
+        "name": "Indices, aliases, data streams",
+        "total": 52,
+        "values": [
+          11,
+          0
+        ]
+      },
+      {
+        "name": "Cluster, nodes and tasks",
+        "total": 31,
+        "values": [
+          8,
+          0
+        ]
+      },
+      {
+        "name": "CAT and list tables",
+        "total": 27,
+        "values": [
+          4,
+          0
+        ]
+      },
+      {
+        "name": "Snapshots and remote store",
+        "total": 20,
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Ingest and search pipelines",
+        "total": 11,
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Security",
+        "total": 82,
+        "values": [
+          1,
+          0
+        ]
+      },
+      {
+        "name": "Machine learning and vectors",
+        "total": 81,
+        "values": [
+          0,
+          2
+        ]
+      },
+      {
+        "name": "Search relevance and LTR",
+        "total": 49,
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "name": "SQL, PPL and async search",
+        "total": 19,
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Index lifecycle and replication",
+        "total": 37,
+        "values": [
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Monitoring, workflows, other plugins",
+        "total": 38,
+        "values": [
+          0,
+          0
+        ]
+      }
+    ],
+    "total": {
+      "name": "All operations",
+      "total": 490,
+      "values": [
+        41,
+        3
+      ]
+    }
+  },
+  "flow": {
+    "ariaLabel": "People, AI agents and Node.js code use one opensearch-cli command tree, which applies profiles, the secret store, a permission gate, partial-result checks and diagnostic redaction before calling the OpenSearch REST API",
+    "callers": [
+      {
+        "title": "People",
+        "sub": "readable tables and records"
+      },
+      {
+        "title": "AI agents and scripts",
+        "sub": "--json  ·  --json-rpc"
+      },
+      {
+        "title": "Node.js code",
+        "sub": "import the command tree"
+      }
+    ],
+    "product": {
+      "title": "opensearch-cli",
+      "sub": "one command tree, 35 OpenSearch commands"
+    },
+    "layers": [
+      {
+        "title": "Profiles",
+        "sub": "several clusters · basic, bearer or none"
+      },
+      {
+        "title": "Secret store",
+        "sub": "passwords and tokens, never in arguments"
+      },
+      {
+        "title": "Permission gate",
+        "sub": "reads on · Update and Delete need a grant",
+        "accent": true
+      },
+      {
+        "title": "Partial-result checks",
+        "sub": "shard failures and timeouts reported"
+      },
+      {
+        "title": "Diagnostic redaction",
+        "sub": "credentials removed from error details"
+      }
+    ],
+    "service": {
+      "title": "OpenSearch REST API",
+      "sub": "41 of 490 operations"
+    }
+  }
+}
