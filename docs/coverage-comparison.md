@@ -158,6 +158,20 @@ Reachable operation counts. Every namespace belongs to exactly one area.
   deletions, JSON and JSON-RPC output on every command, and partial-result reporting; see the
   [command reference](reference.md).
 
+## Updating
+
+The README overview, this document and the pictures follow the
+[product-readme skill](https://github.com/iXab3r/EyeAuras.CliFactory/tree/main/.claude/skills/product-readme) in Factory; it holds the format, the measuring method and the
+picture generator.
+
+- Refresh when the version in a column title changes or the operation inventory changes.
+- Edit the numbers in `docs/images/readme-images.json`, then regenerate the four SVGs with the
+  skill's script from a Factory checkout:
+  `node <factory>/.claude/skills/product-readme/scripts/readme-images.mjs docs/images/readme-images.json docs/images`.
+  It prints the area table for this document and rejects columns that do not add up.
+- A column for another tool is a dated measurement of one version. Re-measure it deliberately,
+  with the skill's method, and update the version, the caveats and the credited list together.
+
 <details>
 <summary>The 41 operations reachable from this CLI 0.2.0</summary>
 
