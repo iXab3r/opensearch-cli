@@ -31,12 +31,15 @@ through its own commands, by API area.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/coverage-matrix-dark.svg">
-  <img src="docs/images/coverage-matrix-light.svg" alt="Coverage matrix: opensearch-cli 0.2.0 reaches 41 of 490 operations (8%) through its commands; the official opensearch-cli 1.2.0 reaches 3 (1%) through dedicated commands">
+  <img src="docs/images/coverage-matrix-light.svg" alt="Coverage matrix: of 490 operations, opensearch-cli 0.2.0 reaches 41 (8%) through its commands, curator-opensearch 0.0.13 reaches 37 (8%), elasticdump 6.125.1 reaches 33 (7%) and the official opensearch-cli 1.2.0 reaches 3 (1%) through dedicated commands">
 </picture>
 
+The other columns are the three most-starred command-line tools for OpenSearch that were found:
+curator-opensearch (index and snapshot housekeeping), elasticdump (import and export) and the
+OpenSearch project's own `opensearch-cli`.
 The official CLI also has a raw `curl` command that can send almost any request (481 of the 490
 operations); this CLI deliberately has none, so every call stays typed and permission-gated.
-Numbers, method and caveats: [coverage comparison](docs/coverage-comparison.md).
+Numbers, method, caveats and every tool considered: [coverage comparison](docs/coverage-comparison.md).
 
 ## Use it
 
