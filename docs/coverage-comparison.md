@@ -8,93 +8,134 @@ Two tools share the name `opensearch-cli`. Here **this CLI** is `@eyeauras/opens
 | Tool | Reachable operations (of 490) | Method + path endpoints (of 720) |
 |---|---:|---:|
 | This CLI 0.2.0, typed commands | 41 (8%) | 48 (7%) |
+| curator-opensearch 0.0.13 | 37 (8%) | 44 (6%) |
+| elasticdump 6.125.1 | 33 (7%) | 44 (6%) |
 | Official CLI 1.2.0, typed commands | 3 (1%) | 4 (1%) |
 | Official CLI 1.2.0, raw `curl` passthrough | 481 (98%) | 710 (99%) |
 
 This CLI has no raw request command, so it has no passthrough column: everything it reaches,
 it reaches through a typed command. The official CLI is the opposite: three typed plugin
-commands and a `curl` command that sends any path the caller writes.
+commands and a `curl` command that sends any path the caller writes. curator-opensearch and
+elasticdump have no raw request command either. They are special-purpose tools, index and
+snapshot housekeeping and data import and export, so the totals are close to this CLI's while
+the operations behind them differ; the tables below show where.
+
+## Tools considered
+
+Every command-line tool for OpenSearch found on 2026-11-10 by searching npm, PyPI, crates.io,
+Homebrew and GitHub. Stars and downloads are as read on that day.
+
+| Tool | Published | Latest version | Popularity | In the comparison |
+|---|---|---|---|---|
+| [elasticdump](https://github.com/elasticsearch-dump/elasticsearch-dump) | npm, GitHub | 6.125.1, 2026-05-12 | 7,945 stars; 31,479 npm downloads a week | Measured |
+| [OpenSearch Benchmark](https://github.com/opensearch-project/opensearch-benchmark) | PyPI, GitHub | 2.5.0, 2026-10-27 | 151 stars; 10,861 PyPI downloads a month | No: a load-testing framework; the requests it sends come from workload files, not from its commands |
+| [curator-opensearch](https://github.com/flant/curator-opensearch) | PyPI, GitHub | 0.0.13, 2024-07-30 | 84 stars; 3,632 PyPI downloads a month | Measured |
+| [opensearch-py-ml](https://github.com/opensearch-project/opensearch-py-ml) | PyPI, GitHub | 1.3.0, 2025-09-16 | 55 stars; 59,942 PyPI downloads a month | No: a Python library; its bundled `opensearch-ml` setup command is a small part of it and the signals count the library |
+| [Official `opensearch-cli`](https://github.com/opensearch-project/opensearch-cli) | GitHub releases | 1.2.0, 2023-11-02 | 51 stars | Measured |
+| [scaledsearch](https://github.com/saidbouig/scaledsearch) | npm, GitHub | 1.2.0, 2026-06-18 | 18 stars; 15 npm downloads a week | No: qualifies, outside the top three (schema migrations) |
+| [os-cli](https://github.com/andreafspeziale/os-cli) | npm, GitHub | 1.10.3, 2026-03-06 | 11 stars; 12 npm downloads a week | No: qualifies, outside the top three |
+| [OpenSearch SQL CLI](https://github.com/opensearch-project/sql-cli) (`opensearchsql`) | PyPI, GitHub | 1.0.0, 2022-01-25 | 9 stars; 67 PyPI downloads a month | No: outside the top three; an interactive SQL and PPL shell for two query endpoints |
+| [OPTIC](https://github.com/oracle/optic) (`opensearch-optic`) | PyPI, GitHub | 2.0.0 on PyPI, 2025-09-22 | 9 stars; 9 PyPI downloads a month | No: qualifies, outside the top three |
+| [reporting-cli](https://github.com/opensearch-project/reporting-cli) | npm, GitHub | 1.1.0, 2024-03-22 | 6 stars; 81 npm downloads a week | No: downloads OpenSearch Dashboards reports, does not call the OpenSearch REST API |
+| [searchctl](https://github.com/chronicblondiee/searchctl) | GitHub source only | no release or tag | 4 stars | No: nothing published at a pinned version |
+| [clibana](https://github.com/ivoronin/clibana) | GitHub releases | 2026.02.05, 2026-02-05 | 3 stars | No: qualifies, outside the top three (log search and tailing) |
+| [elastically](https://github.com/denysvitali/elastically) | GitHub source only | no release or tag | 3 stars | No: nothing published at a pinned version |
+| [es-tui](https://github.com/davidbudnick/es-tui), [stoptail](https://github.com/dsablic/stoptail) | GitHub releases | 0.0.4, 2026-11-06; 1.10.0, 2026-10-07 | 3 and 2 stars | No: interactive terminal UIs, not command-line clients |
+| [osearch](https://github.com/scoopex/osearch) | GitHub releases | 0.0.4, 2026-08-02 | 2 stars | No: qualifies, outside the top three (log search and tailing) |
+| [opensearchtools](https://github.com/disaster37/opensearchtools) | GitHub releases | 3.4.6, 2026-11-05 | 1 star | No: qualifies, outside the top three |
+| [dalet-oss/opensearch-cli](https://github.com/dalet-oss/opensearch-cli) | GitHub releases | 0.9.5, 2026-03-05 | 1 star | No: qualifies, outside the top three |
+| [canonical/opensearch-client](https://github.com/canonical/opensearch-client) | GitHub tag | 0.1.1 | 1 star | No: a library with a small command, outside the top three |
+| [osc](https://github.com/KrisBuytaert/osc) | GitHub source only | no release or tag | 1 star | No: nothing published at a pinned version |
+| [osapi](https://github.com/logmanager-oss/opensearch-api) | GitHub releases, Go module | 1.3.0, 2026-10-23 | 0 stars | No: a raw request tool ("a resilient `curl` for OpenSearch"), which is not coverage |
+| `opensearchcli` | PyPI | 0.2.7, 2026-08-17 | 49 PyPI downloads a month | No: qualifies, outside the top three |
+| [osearch-cli](https://github.com/EnzoDeg40/opensearch-cli) | PyPI, GitHub | 0.1.1, 2026-04-01 | 0 stars; 9 PyPI downloads a month | No: qualifies, outside the top three |
+| [Elasticsearch Curator](https://github.com/elastic/curator) | PyPI, GitHub | 9.0.0, 2025-10-03 | 3,075 stars | No: targets Elasticsearch only; curator-opensearch is its OpenSearch fork |
+
+Selection rule: a tool is measured when it is a command-line client that explicitly targets the
+OpenSearch REST API (not a library, MCP server, editor plugin, benchmark or raw request
+wrapper) and is published at a version that can be pinned; when more than three such tools
+exist, the three with the most GitHub stars are measured, whatever they score.
 
 ## By API area
 
 Percent of operations reachable, with the count in brackets.
 
-| API area | Operations | This CLI 0.2.0, typed | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
-|---|---:|---:|---:|---:|
-| Documents and search | 43 | 40% (17) | 2% (1) | 93% (40) |
-| Indices, aliases, data streams | 52 | 21% (11) | 0% (0) | 92% (48) |
-| Cluster, nodes and tasks | 31 | 26% (8) | 0% (0) | 97% (30) |
-| CAT and list tables | 27 | 15% (4) | 0% (0) | 100% (27) |
-| Snapshots and remote store | 20 | 0% (0) | 0% (0) | 100% (20) |
-| Ingest and search pipelines | 11 | 0% (0) | 0% (0) | 100% (11) |
-| Security | 82 | 1% (1) | 0% (0) | 100% (82) |
-| Machine learning and vectors | 81 | 0% (0) | 2% (2) | 100% (81) |
-| Search relevance and LTR | 49 | 0% (0) | 0% (0) | 100% (49) |
-| SQL, PPL and async search | 19 | 0% (0) | 0% (0) | 100% (19) |
-| Index lifecycle and replication | 37 | 0% (0) | 0% (0) | 97% (36) |
-| Monitoring, workflows, other plugins | 38 | 0% (0) | 0% (0) | 100% (38) |
-| **All operations** | **490** | **8% (41)** | **1% (3)** | **98% (481)** |
+| API area | Operations | This CLI 0.2.0, typed | curator-opensearch 0.0.13 | elasticdump 6.125.1 | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
+|---|---:|---:|---:|---:|---:|---:|
+| Documents and search | 43 | 40% (17) | 7% (3) | 21% (9) | 2% (1) | 93% (40) |
+| Indices, aliases, data streams | 52 | 21% (11) | 35% (18) | 33% (17) | 0% (0) | 92% (48) |
+| Cluster, nodes and tasks | 31 | 26% (8) | 23% (7) | 13% (4) | 0% (0) | 97% (30) |
+| CAT and list tables | 27 | 15% (4) | 0% (0) | 0% (0) | 0% (0) | 100% (27) |
+| Snapshots and remote store | 20 | 0% (0) | 45% (9) | 0% (0) | 0% (0) | 100% (20) |
+| Ingest and search pipelines | 11 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (11) |
+| Security | 82 | 1% (1) | 0% (0) | 0% (0) | 0% (0) | 100% (82) |
+| Machine learning and vectors | 81 | 0% (0) | 0% (0) | 0% (0) | 2% (2) | 100% (81) |
+| Search relevance and LTR | 49 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (49) |
+| SQL, PPL and async search | 19 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (19) |
+| Index lifecycle and replication | 37 | 0% (0) | 0% (0) | 8% (3) | 0% (0) | 97% (36) |
+| Monitoring, workflows, other plugins | 38 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (38) |
+| **All operations** | **490** | **8% (41)** | **8% (37)** | **7% (33)** | **1% (3)** | **98% (481)** |
 
 The same areas counted per method + path endpoint:
 
-| API area | Endpoints | This CLI 0.2.0, typed | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
-|---|---:|---:|---:|---:|
-| Documents and search | 97 | 22% (21) | 1% (1) | 97% (94) |
-| Indices, aliases, data streams | 107 | 11% (12) | 0% (0) | 95% (102) |
-| Cluster, nodes and tasks | 55 | 16% (9) | 0% (0) | 98% (54) |
-| CAT and list tables | 41 | 12% (5) | 0% (0) | 100% (41) |
-| Snapshots and remote store | 25 | 0% (0) | 0% (0) | 100% (25) |
-| Ingest and search pipelines | 16 | 0% (0) | 0% (0) | 100% (16) |
-| Security | 88 | 1% (1) | 0% (0) | 100% (88) |
-| Machine learning and vectors | 104 | 0% (0) | 3% (3) | 100% (104) |
-| Search relevance and LTR | 81 | 0% (0) | 0% (0) | 100% (81) |
-| SQL, PPL and async search | 19 | 0% (0) | 0% (0) | 100% (19) |
-| Index lifecycle and replication | 44 | 0% (0) | 0% (0) | 98% (43) |
-| Monitoring, workflows, other plugins | 43 | 0% (0) | 0% (0) | 100% (43) |
-| **All endpoints** | **720** | **7% (48)** | **1% (4)** | **99% (710)** |
+| API area | Endpoints | This CLI 0.2.0, typed | curator-opensearch 0.0.13 | elasticdump 6.125.1 | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
+|---|---:|---:|---:|---:|---:|---:|
+| Documents and search | 97 | 22% (21) | 3% (3) | 16% (16) | 1% (1) | 97% (94) |
+| Indices, aliases, data streams | 107 | 11% (12) | 21% (23) | 20% (21) | 0% (0) | 95% (102) |
+| Cluster, nodes and tasks | 55 | 16% (9) | 16% (9) | 7% (4) | 0% (0) | 98% (54) |
+| CAT and list tables | 41 | 12% (5) | 0% (0) | 0% (0) | 0% (0) | 100% (41) |
+| Snapshots and remote store | 25 | 0% (0) | 36% (9) | 0% (0) | 0% (0) | 100% (25) |
+| Ingest and search pipelines | 16 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (16) |
+| Security | 88 | 1% (1) | 0% (0) | 0% (0) | 0% (0) | 100% (88) |
+| Machine learning and vectors | 104 | 0% (0) | 0% (0) | 0% (0) | 3% (3) | 100% (104) |
+| Search relevance and LTR | 81 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (81) |
+| SQL, PPL and async search | 19 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (19) |
+| Index lifecycle and replication | 44 | 0% (0) | 0% (0) | 7% (3) | 0% (0) | 98% (43) |
+| Monitoring, workflows, other plugins | 43 | 0% (0) | 0% (0) | 0% (0) | 0% (0) | 100% (43) |
+| **All endpoints** | **720** | **7% (48)** | **6% (44)** | **6% (44)** | **1% (4)** | **99% (710)** |
 
 ## By specification namespace
 
 Reachable operation counts. Every namespace belongs to exactly one area.
 
-| Namespace | API area | Operations | This CLI 0.2.0, typed | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
-|---|---|---:|---:|---:|---:|
-| `_core` | Documents and search | 43 | 17 | 1 | 40 |
-| `indices` | Indices, aliases, data streams | 49 | 11 | 0 | 45 |
-| `dangling_indices` | Indices, aliases, data streams | 3 | 0 | 0 | 3 |
-| `cluster` | Cluster, nodes and tasks | 22 | 3 | 0 | 21 |
-| `nodes` | Cluster, nodes and tasks | 5 | 2 | 0 | 5 |
-| `tasks` | Cluster, nodes and tasks | 4 | 3 | 0 | 4 |
-| `cat` | CAT and list tables | 24 | 4 | 0 | 24 |
-| `list` | CAT and list tables | 3 | 0 | 0 | 3 |
-| `snapshot` | Snapshots and remote store | 11 | 0 | 0 | 11 |
-| `sm` | Snapshots and remote store | 8 | 0 | 0 | 8 |
-| `remote_store` | Snapshots and remote store | 1 | 0 | 0 | 1 |
-| `ingest` | Ingest and search pipelines | 5 | 0 | 0 | 5 |
-| `ingestion` | Ingest and search pipelines | 3 | 0 | 0 | 3 |
-| `search_pipeline` | Ingest and search pipelines | 3 | 0 | 0 | 3 |
-| `security` | Security | 79 | 1 | 0 | 79 |
-| `security_analytics` | Security | 3 | 0 | 0 | 3 |
-| `ml` | Machine learning and vectors | 74 | 0 | 0 | 74 |
-| `knn` | Machine learning and vectors | 6 | 0 | 2 | 6 |
-| `neural` | Machine learning and vectors | 1 | 0 | 0 | 1 |
-| `ltr` | Search relevance and LTR | 26 | 0 | 0 | 26 |
-| `search_relevance` | Search relevance and LTR | 22 | 0 | 0 | 22 |
-| `ubi` | Search relevance and LTR | 1 | 0 | 0 | 1 |
-| `sql` | SQL, PPL and async search | 6 | 0 | 0 | 6 |
-| `ppl` | SQL, PPL and async search | 4 | 0 | 0 | 4 |
-| `query` | SQL, PPL and async search | 5 | 0 | 0 | 5 |
-| `asynchronous_search` | SQL, PPL and async search | 4 | 0 | 0 | 4 |
-| `ism` | Index lifecycle and replication | 12 | 0 | 0 | 11 |
-| `rollups` | Index lifecycle and replication | 6 | 0 | 0 | 6 |
-| `transforms` | Index lifecycle and replication | 8 | 0 | 0 | 8 |
-| `replication` | Index lifecycle and replication | 11 | 0 | 0 | 11 |
-| `insights` | Monitoring, workflows, other plugins | 1 | 0 | 0 | 1 |
-| `wlm` | Monitoring, workflows, other plugins | 4 | 0 | 0 | 4 |
-| `notifications` | Monitoring, workflows, other plugins | 9 | 0 | 0 | 9 |
-| `observability` | Monitoring, workflows, other plugins | 7 | 0 | 0 | 7 |
-| `flow_framework` | Monitoring, workflows, other plugins | 10 | 0 | 0 | 10 |
-| `geospatial` | Monitoring, workflows, other plugins | 7 | 0 | 0 | 7 |
+| Namespace | API area | Operations | This CLI 0.2.0, typed | curator-opensearch 0.0.13 | elasticdump 6.125.1 | Official CLI 1.2.0, typed | Official CLI 1.2.0, `curl` |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `_core` | Documents and search | 43 | 17 | 3 | 9 | 1 | 40 |
+| `indices` | Indices, aliases, data streams | 49 | 11 | 18 | 17 | 0 | 45 |
+| `dangling_indices` | Indices, aliases, data streams | 3 | 0 | 0 | 0 | 0 | 3 |
+| `cluster` | Cluster, nodes and tasks | 22 | 3 | 3 | 4 | 0 | 21 |
+| `nodes` | Cluster, nodes and tasks | 5 | 2 | 2 | 0 | 0 | 5 |
+| `tasks` | Cluster, nodes and tasks | 4 | 3 | 2 | 0 | 0 | 4 |
+| `cat` | CAT and list tables | 24 | 4 | 0 | 0 | 0 | 24 |
+| `list` | CAT and list tables | 3 | 0 | 0 | 0 | 0 | 3 |
+| `snapshot` | Snapshots and remote store | 11 | 0 | 9 | 0 | 0 | 11 |
+| `sm` | Snapshots and remote store | 8 | 0 | 0 | 0 | 0 | 8 |
+| `remote_store` | Snapshots and remote store | 1 | 0 | 0 | 0 | 0 | 1 |
+| `ingest` | Ingest and search pipelines | 5 | 0 | 0 | 0 | 0 | 5 |
+| `ingestion` | Ingest and search pipelines | 3 | 0 | 0 | 0 | 0 | 3 |
+| `search_pipeline` | Ingest and search pipelines | 3 | 0 | 0 | 0 | 0 | 3 |
+| `security` | Security | 79 | 1 | 0 | 0 | 0 | 79 |
+| `security_analytics` | Security | 3 | 0 | 0 | 0 | 0 | 3 |
+| `ml` | Machine learning and vectors | 74 | 0 | 0 | 0 | 0 | 74 |
+| `knn` | Machine learning and vectors | 6 | 0 | 0 | 0 | 2 | 6 |
+| `neural` | Machine learning and vectors | 1 | 0 | 0 | 0 | 0 | 1 |
+| `ltr` | Search relevance and LTR | 26 | 0 | 0 | 0 | 0 | 26 |
+| `search_relevance` | Search relevance and LTR | 22 | 0 | 0 | 0 | 0 | 22 |
+| `ubi` | Search relevance and LTR | 1 | 0 | 0 | 0 | 0 | 1 |
+| `sql` | SQL, PPL and async search | 6 | 0 | 0 | 0 | 0 | 6 |
+| `ppl` | SQL, PPL and async search | 4 | 0 | 0 | 0 | 0 | 4 |
+| `query` | SQL, PPL and async search | 5 | 0 | 0 | 0 | 0 | 5 |
+| `asynchronous_search` | SQL, PPL and async search | 4 | 0 | 0 | 0 | 0 | 4 |
+| `ism` | Index lifecycle and replication | 12 | 0 | 0 | 3 | 0 | 11 |
+| `rollups` | Index lifecycle and replication | 6 | 0 | 0 | 0 | 0 | 6 |
+| `transforms` | Index lifecycle and replication | 8 | 0 | 0 | 0 | 0 | 8 |
+| `replication` | Index lifecycle and replication | 11 | 0 | 0 | 0 | 0 | 11 |
+| `insights` | Monitoring, workflows, other plugins | 1 | 0 | 0 | 0 | 0 | 1 |
+| `wlm` | Monitoring, workflows, other plugins | 4 | 0 | 0 | 0 | 0 | 4 |
+| `notifications` | Monitoring, workflows, other plugins | 9 | 0 | 0 | 0 | 0 | 9 |
+| `observability` | Monitoring, workflows, other plugins | 7 | 0 | 0 | 0 | 0 | 7 |
+| `flow_framework` | Monitoring, workflows, other plugins | 10 | 0 | 0 | 0 | 0 | 10 |
+| `geospatial` | Monitoring, workflows, other plugins | 7 | 0 | 0 | 0 | 0 | 7 |
 
 ## Method
 
@@ -125,10 +166,82 @@ Reachable operation counts. Every namespace belongs to exactly one area.
   `GET /_plugins/_security/authinfo` during sign-in and `auth status`, `HEAD /{index}` before
   `indices create`, `GET /_alias/{name}` before `aliases swap`, the hidden-index lookup in
   `indices list`, and the point-in-time calls of `search --all`.
+- **curator-opensearch 0.0.13** is the source distribution on PyPI (uploaded 2024-07-30,
+  SHA-256 `c97f45a038e19c71227f0d88baa370d737f2b3a18fe1416d448c21c3a1bf2714`), read without
+  installing or running it. It calls the service only through the `opensearch-py` client, so
+  each client call reachable from the `curator`, `curator_cli` and `es_repo_mgr` commands was
+  turned into the method and path that `opensearch-py` 2.0.0, the lowest version the package
+  allows, builds for the arguments passed, then matched to the same inventory. Calls made as
+  a step of another action, such as index filters and wait loops, are counted, as they are for
+  this CLI.
+- **elasticdump 6.125.1** is the npm tarball (published 2026-05-12, SHA-1
+  `a08e7cbaf2d0d11f2bf6cbf778916109ebd0fd9f`), read without installing or running it. Every
+  request built in `lib/transports/__es__` and in `bin/multielasticdump` was followed back to a
+  `--type` or option of the `elasticdump` and `multielasticdump` commands and matched to the
+  same inventory, both for a cluster URL and for a URL that names an index. A trailing slash
+  is treated as the same route.
 - **Official CLI 1.2.0** is tag `v1.2.0` (commit `6bd2733b4486817ae8d8cef02d73b92281e4ffcb`,
   dated 2023-11-02) of the OpenSearch project's `opensearch-cli` repository. Its Go source was read
   without building or running it. Each request built in its `gateway` packages was followed
   back to a command, normalized and matched to the same inventory.
+
+## Caveats for the curator-opensearch column
+
+- It is a static reading of one release, not a statement about later ones. PyPI shows no
+  release after 0.0.13 of 2024-07-30.
+- 47 distinct calls are reachable from its commands. 44 match the inventory and give 37
+  operations.
+- The 3 that do not match: `POST /{index}/_flush/synced`, sent by the `close` action unless
+  `skip_flush` is set, which the pinned specification does not describe; and the `freeze` and
+  `unfreeze` actions, which call `client.xpack`, an attribute `opensearch-py` does not have,
+  so they send nothing.
+- The paths depend on the `opensearch-py` version installed next to it. The package allows any
+  version from 2.0.0; the reading uses 2.0.0. Version 3.2.0 no longer has `flush_synced` and
+  takes keyword arguments only, which several calls in this release do not use.
+- Many credited operations are steps inside an action, not commands of their own. `search` is
+  the `POST /{index}/_search` aggregation of the `field_stats` age filter, and the `nodes`,
+  `tasks`, `indices.stats`, `indices.segments` and `indices.recovery` calls serve filters,
+  the `shrink` action and wait loops. It has no command to search or read documents.
+- Two helper functions (`single_data_path` and `get_snapshot` in `curator/utils.py`) are not
+  wired to a command; the requests they would send are also sent elsewhere and are counted
+  there.
+- Coverage is one axis. curator-opensearch offers things this CLI does not: snapshot,
+  restore and repository management, rollover, shrink, force merge, open and close,
+  allocation and replica changes, selection of indices and snapshots by age, size, pattern
+  or count, YAML action files for scheduled runs, a dry-run mode and AWS request signing.
+  This CLI offers document and search commands, cluster diagnostics, a default-deny
+  permission gate, and JSON and JSON-RPC output on every command.
+
+## Caveats for the elasticdump column
+
+- It is a static reading of one release, not a statement about later ones.
+- 57 distinct calls are reachable from its commands. 44 match the inventory and give 33
+  operations.
+- The 13 that do not match: 7 belong to its Elasticsearch branch (`/_pit` and `/_ilm/policy`
+  routes, which it does not send to OpenSearch); 2 are point-in-time calls made when the
+  URL names an index, where the path comes out as `/{index}/{index}/_search/point_in_time`
+  on create and `/{index}/_search/point_in_time` on delete; 3 are index calls made with a
+  URL that names no index (`PUT /`, `POST /_close`, `POST /_open`); and 1 is
+  `GET /_aliases`, which `multielasticdump` uses to list indices and the pinned specification
+  does not describe. `create_pit` and `delete_pit` are credited through the cluster-URL forms.
+- Two operations are credited through a path with a trailing slash: `indices.get`
+  (`GET /{index}/` for `--type=index`) and `ism.get_policies` (`GET /_plugins/_ism/policies/`).
+  Read strictly they would not match, and the total would be 31.
+- Its legacy forms with a mapping type in the path (`/{index}/{type}/...`) are not listed;
+  OpenSearch has no mapping types in paths.
+- The operations are reached as the read or write side of a dump, chosen with `--type`
+  (data, index, settings, analyzer, mapping, policy, alias, script, the three template
+  kinds), not as commands for one operation each. `delete` is the per-document delete of
+  `--delete`, and `indices.delete` is the cleanup step of `multielasticdump`. `--type=script`
+  is handled by the code but not listed in its help; it gives `cluster.state` and
+  `put_script`.
+- No request exists in its source that is not wired to a command.
+- Coverage is one axis. elasticdump offers things this CLI does not: copying data, mappings,
+  settings, templates, aliases and ISM policies between clusters, files, S3 and CSV,
+  transform scripts, parallel multi-index dumps, AWS request signing, client certificates
+  and support for Elasticsearch and OpenSearch Serverless. This CLI offers commands for
+  single operations with shaped output, cluster diagnostics, a default-deny permission
+  gate, and JSON and JSON-RPC output on every command.
 
 ## Caveats for the official CLI columns
 
@@ -216,6 +329,88 @@ picture generator.
 - `tasks.cancel`: `POST /_tasks/{task_id}/_cancel`
 - `tasks.get`: `GET /_tasks/{task_id}`
 - `tasks.list`: `GET /_tasks`
+
+</details>
+
+<details>
+<summary>The 37 operations reachable from curator-opensearch 0.0.13</summary>
+
+- `info`: `GET /`
+- `reindex`: `POST /_reindex`
+- `search`: `POST /{index}/_search`
+- `cluster.health`: `GET /_cluster/health`
+- `cluster.put_settings`: `PUT /_cluster/settings`
+- `cluster.state`: `GET /_cluster/state/{metric}`, `GET /_cluster/state/{metric}/{index}`
+- `indices.close`: `POST /{index}/_close`
+- `indices.create`: `PUT /{index}`
+- `indices.delete`: `DELETE /{index}`
+- `indices.delete_alias`: `DELETE /{index}/_alias/{name}`
+- `indices.exists`: `HEAD /{index}`
+- `indices.exists_alias`: `HEAD /_alias/{name}`
+- `indices.forcemerge`: `POST /{index}/_forcemerge`
+- `indices.get`: `GET /{index}`
+- `indices.get_alias`: `GET /_alias`, `GET /_alias/{name}`, `GET /{index}/_alias`, `GET /{index}/_alias/{name}`
+- `indices.get_settings`: `GET /{index}/_settings`
+- `indices.open`: `POST /{index}/_open`
+- `indices.put_settings`: `PUT /{index}/_settings`
+- `indices.recovery`: `GET /{index}/_recovery`
+- `indices.rollover`: `POST /{alias}/_rollover`, `POST /{alias}/_rollover/{new_index}`
+- `indices.segments`: `GET /{index}/_segments`
+- `indices.shrink`: `PUT /{index}/_shrink/{target}`
+- `indices.stats`: `GET /{index}/_stats`, `GET /{index}/_stats/{metric}`
+- `indices.update_aliases`: `POST /_aliases`
+- `nodes.info`: `GET /_nodes`, `GET /_nodes/{node_id_or_metric}`
+- `nodes.stats`: `GET /_nodes/stats`
+- `snapshot.create`: `PUT /_snapshot/{repository}/{snapshot}`
+- `snapshot.create_repository`: `PUT /_snapshot/{repository}`
+- `snapshot.delete`: `DELETE /_snapshot/{repository}/{snapshot}`
+- `snapshot.delete_repository`: `DELETE /_snapshot/{repository}`
+- `snapshot.get`: `GET /_snapshot/{repository}/{snapshot}`
+- `snapshot.get_repository`: `GET /_snapshot/{repository}`
+- `snapshot.restore`: `POST /_snapshot/{repository}/{snapshot}/_restore`
+- `snapshot.status`: `GET /_snapshot/_status`
+- `snapshot.verify_repository`: `POST /_snapshot/{repository}/_verify`
+- `tasks.get`: `GET /_tasks/{task_id}`
+- `tasks.list`: `GET /_tasks`
+
+</details>
+
+<details>
+<summary>The 33 operations reachable from elasticdump 6.125.1</summary>
+
+- `bulk`: `POST /_bulk`, `PUT /_bulk`, `POST /{index}/_bulk`, `PUT /{index}/_bulk`
+- `create_pit`: `POST /{index}/_search/point_in_time`
+- `delete`: `DELETE /{index}/_doc/{id}`
+- `delete_pit`: `DELETE /_search/point_in_time`
+- `info`: `GET /`
+- `put_script`: `POST /_scripts/{id}`
+- `render_search_template`: `GET /_render/template/{id}`
+- `scroll`: `GET /_search/scroll`, `POST /_search/scroll`
+- `search`: `GET /_search`, `POST /_search`, `GET /{index}/_search`, `POST /{index}/_search`
+- `cluster.get_component_template`: `GET /_component_template/{name}`
+- `cluster.health`: `GET /_cluster/health/{index}`
+- `cluster.put_component_template`: `PUT /_component_template/{name}`
+- `cluster.state`: `GET /_cluster/state/{metric}`
+- `indices.close`: `POST /{index}/_close`
+- `indices.create`: `PUT /{index}`
+- `indices.delete`: `DELETE /{index}`
+- `indices.get`: `GET /{index}`
+- `indices.get_alias`: `GET /{index}/_alias/{name}`
+- `indices.get_data_stream`: `GET /_data_stream`
+- `indices.get_index_template`: `GET /_index_template/{name}`
+- `indices.get_mapping`: `GET /_mapping`, `GET /{index}/_mapping`
+- `indices.get_settings`: `GET /_settings`, `GET /{index}/_settings`
+- `indices.get_template`: `GET /_template/{name}`
+- `indices.open`: `POST /{index}/_open`
+- `indices.put_index_template`: `PUT /_index_template/{name}`
+- `indices.put_mapping`: `PUT /{index}/_mapping`
+- `indices.put_settings`: `PUT /_settings`, `PUT /{index}/_settings`
+- `indices.put_template`: `PUT /_template/{name}`
+- `indices.refresh`: `POST /_refresh`, `POST /{index}/_refresh`
+- `indices.update_aliases`: `POST /_aliases`
+- `ism.get_policies`: `GET /_plugins/_ism/policies`
+- `ism.get_policy`: `GET /_plugins/_ism/policies/{policy_id}`
+- `ism.put_policy`: `PUT /_plugins/_ism/policies/{policy_id}`
 
 </details>
 

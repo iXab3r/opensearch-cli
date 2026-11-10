@@ -6,20 +6,30 @@
         "subtitle": "this package"
       },
       {
-        "title": "official opensearch-cli 1.2.0",
+        "title": "curator-opensearch",
+        "subtitle": "0.0.13, index curator"
+      },
+      {
+        "title": "elasticdump 6.125.1",
+        "subtitle": "import and export"
+      },
+      {
+        "title": "official CLI 1.2.0",
         "subtitle": "dedicated commands"
       }
     ],
     "rowHeader": "API area",
     "countHeader": "operations",
     "legend": "Share of specified operations reachable",
-    "ariaLabel": "Coverage matrix: opensearch-cli 0.2.0 reaches 41 of 490 operations (8%) through its commands; the official opensearch-cli 1.2.0 reaches 3 (1%) through dedicated commands",
+    "ariaLabel": "Coverage matrix: of 490 operations, opensearch-cli 0.2.0 reaches 41 (8%) through its commands, curator-opensearch 0.0.13 reaches 37 (8%), elasticdump 6.125.1 reaches 33 (7%) and the official opensearch-cli 1.2.0 reaches 3 (1%) through dedicated commands",
     "rows": [
       {
         "name": "Documents and search",
         "total": 43,
         "values": [
           17,
+          3,
+          9,
           1
         ]
       },
@@ -28,6 +38,8 @@
         "total": 52,
         "values": [
           11,
+          18,
+          17,
           0
         ]
       },
@@ -36,6 +48,8 @@
         "total": 31,
         "values": [
           8,
+          7,
+          4,
           0
         ]
       },
@@ -44,6 +58,8 @@
         "total": 27,
         "values": [
           4,
+          0,
+          0,
           0
         ]
       },
@@ -51,6 +67,8 @@
         "name": "Snapshots and remote store",
         "total": 20,
         "values": [
+          0,
+          9,
           0,
           0
         ]
@@ -60,6 +78,8 @@
         "total": 11,
         "values": [
           0,
+          0,
+          0,
           0
         ]
       },
@@ -68,6 +88,8 @@
         "total": 82,
         "values": [
           1,
+          0,
+          0,
           0
         ]
       },
@@ -75,6 +97,8 @@
         "name": "Machine learning and vectors",
         "total": 81,
         "values": [
+          0,
+          0,
           0,
           2
         ]
@@ -84,6 +108,8 @@
         "total": 49,
         "values": [
           0,
+          0,
+          0,
           0
         ]
       },
@@ -91,6 +117,8 @@
         "name": "SQL, PPL and async search",
         "total": 19,
         "values": [
+          0,
+          0,
           0,
           0
         ]
@@ -100,6 +128,8 @@
         "total": 37,
         "values": [
           0,
+          0,
+          3,
           0
         ]
       },
@@ -107,6 +137,8 @@
         "name": "Monitoring, workflows, other plugins",
         "total": 38,
         "values": [
+          0,
+          0,
           0,
           0
         ]
@@ -117,6 +149,8 @@
       "total": 490,
       "values": [
         41,
+        37,
+        33,
         3
       ]
     }
